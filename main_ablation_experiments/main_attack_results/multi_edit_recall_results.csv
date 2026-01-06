@@ -1,0 +1,7 @@
+Model,Algorithm,Dataset,Num=10,Num=50,Num=100
+gpt2-xl,AlphaEdit,mcf,0.9800 ± 0.0447,0.9440 ± 0.0410,0.9440 ± 0.0321
+gpt2-xl,AlphaEdit,zsre,0.9800 ± 0.0447,0.9880 ± 0.0110,0.9880 ± 0.0130
+gpt-j,AlphaEdit,mcf,0.9800 ± 0.0447,0.9640 ± 0.0261,0.9600 ± 0.0071
+gpt-j,AlphaEdit,zsre,0.9800 ± 0.0447,0.9920 ± 0.0110,0.9940 ± 0.0089
+Llama3,AlphaEdit,mcf,1.0000 ± 0.0000,0.9880 ± 0.0179,0.9880 ± 0.0110
+Llama3,AlphaEdit,zsre,0.9800 ± 0.0447,0.9920 ± 0.0110,0.9940 ± 0.0089
