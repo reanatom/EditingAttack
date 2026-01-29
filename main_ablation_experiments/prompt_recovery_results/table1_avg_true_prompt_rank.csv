@@ -1,7 +1,0 @@
-Model,Algorithm,Dataset,Num_edits,N_runs,Avg_True_Prompt_Rank
-Llama3,MEMIT,mcf,10,30,42.38 ± 63.00
-Llama3,MEMIT,mcf,50,6,61.19 ± 37.15
-gpt2-xl,MEMIT,mcf,10,30,88.45 ± 84.59
-gpt2-xl,MEMIT,mcf,50,6,88.57 ± 31.47
-gpt-j,MEMIT,mcf,10,30,3.19 ± 1.53
-gpt-j,MEMIT,mcf,50,6,2.88 ± 0.91

@@ -406,8 +406,8 @@ def run_experiment(
         print(f"{'='*80}")
         
         # Create result directory in main_ablation_experiments/results/
-        scale_dir = Path("main_ablation_experiments/results") /"zsre"/ f"camouflage_scale={scale}" /alg_name
-        # scale_dir = Path("main_ablation_experiments/results") / f"camouflage_scale={scale}" / alg_name
+        # scale_dir = Path("main_ablation_experiments/results") /"zsre"/ f"camouflage_scale={scale}" /alg_name
+        scale_dir = Path("main_ablation_experiments/results") / f"camouflage_scale={scale}" / alg_name
         scale_dir.mkdir(parents=True, exist_ok=True)
         
         # Store all ranks for this scale

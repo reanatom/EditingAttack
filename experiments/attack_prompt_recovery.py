@@ -11,7 +11,7 @@ from experiments.attack_memit_recovery import create_name_database, get_activati
 from util import nethook
 from memit.memit_main import upd_matrix_match_shape
 
-# 环境设置
+
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 from util.data_loader import load_dataset_data
@@ -30,13 +30,11 @@ def create_prompt_library(subject):
     return prompts
 
 def get_layer_output_activation(model, tok, prompt, subject, layer, module_template):
-    """
-    获取在主语最后一个token位置上的投影层（FFN down_proj）输出的激活向量。
-    """
+
     context_templates = [prompt]
     words = [subject]
     
-    # track="both" 在 get_module_input_output_at_words 中返回 (input, output)
+
     _, activation_output = get_module_input_output_at_words(
         model=model,
         tok=tok,
@@ -53,9 +51,7 @@ def get_layer_output_activation(model, tok, prompt, subject, layer, module_templ
     return activation_output.detach().cpu() # Move to CPU to save GPU memory
 
 def apply_edits_to_model(model, delta_file_path):
-    """
-    加载编辑量并应用到模型。
-    """
+
     print(f"Loading edit amounts from {delta_file_path}...")
     try:
         edit_amounts = torch.load(delta_file_path)
@@ -65,14 +61,11 @@ def apply_edits_to_model(model, delta_file_path):
 
     with torch.no_grad():
         for w_name, upd_matrix in edit_amounts.items():
-            # upd_matrix 已经在 memit_main 中被处理过形状并转为 CPU 了
-            # 我们需要将其移回 GPU 并应用
+
             w = nethook.get_parameter(model, w_name)
             upd_matrix = upd_matrix.to(w.device)
             
-            # 确保形状匹配 (虽然 memit_main 应该已经处理过了，但再次检查是个好习惯)
-            # upd_matrix = upd_matrix_match_shape(upd_matrix, w.shape) 
-            # edit_amounts 保存的是已经 match_shape 过的
+
             
             w[...] += upd_matrix.float()
             
@@ -81,40 +74,31 @@ def apply_edits_to_model(model, delta_file_path):
 
 
 def calculate_prediction_entropy(model, tok, prompt, subject):
-    """
-    计算模型对下一个词预测的熵 (Entropy)。
-    熵越低，表示模型越自信；熵越高，表示模型越困惑。
-    """
+
     full_prompt = prompt.format(subject)
     input_ids = tok(full_prompt, return_tensors="pt").to("cuda")
 
     with torch.no_grad():
         outputs = model(**input_ids)
 
-    # 获取最后一个 token 的 logits
+
     logits = outputs.logits[0, -1, :]
 
-    # 计算概率分布
+
     probs = torch.softmax(logits, dim=-1)
 
-    # 计算熵: -sum(p * log(p))
-    # 为了数值稳定性，使用 log_softmax
     log_probs = torch.log_softmax(logits, dim=-1)
     entropy = -(probs * log_probs).sum().item()
 
-    # 同时获取最大概率的词，方便观察
+
     max_prob, max_id = torch.max(probs, dim=-1)
     predicted_token = tok.decode(max_id).strip()
 
     return entropy, max_prob.item(), predicted_token
 
 def calculate_score(entropy, max_prob, predicted_token):
-    """
-    计算最终得分：Score = Information Value / Entropy
-    Information Value = max_prob * indicator
-    indicator: 如果是无意义词则为0，否则为1
-    """
-    # 停用词列表
+
+
     stopwords = [
         "", " ", "<|endoftext|>", "the", "a", "an", "is", "of", "in", "to", "and", "that", "it", "for", "on", "with", "as", "by", "at", 
         "this", "these", "those", "are", "was", "were", "be", "been", "being", "have", "has", "had", 
@@ -127,10 +111,10 @@ def calculate_score(entropy, max_prob, predicted_token):
     
     predicted_token_lower = predicted_token.lower().strip()
     
-    # 指示函数
+
     indicator = 0 if predicted_token_lower in stopwords or len(predicted_token_lower) == 0 else 1
     
-    # 避免除以零
+
     epsilon = 1e-6
     score = (max_prob * indicator) / (entropy + epsilon)
     
@@ -148,7 +132,7 @@ def main():
         delta_file_path=f"edit_memit_amount/edit_amounts_batch_case_{case_id}.pt",
         kr_ground_truth_path=f"edit_memit_amount/kr_ground_truth_case_{case_id}.pt",
         rewrite_module_tmp="model.layers.{}.mlp.down_proj",
-        final_layer_to_attack=4, # 使用第4层进行主语恢复和获取 R
+        final_layer_to_attack=4,
         mom2_dataset="wikipedia",
         mom2_n_samples=100000,
         mom2_dtype="float32",
@@ -169,7 +153,7 @@ def main():
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
         
-    # 2. 获取 v1_r_direction_layer4 和 恢复主语
+
     print("\n[Step 1] Recovering top subject using Layer 4...")
     try:
         opt_k_4 = run_attack_simple_k_r_CORRECT(config_rec, model, tok)
@@ -180,7 +164,7 @@ def main():
         print(f"Error getting optimized k: {e}")
         return
 
-    # 创建名字数据库并找到最佳主语
+
     name_db = create_name_database()
     best_subject = None
     best_sim = -1.0
@@ -199,17 +183,17 @@ def main():
             
     print(f"Recovered Top 1 Subject: {best_subject} (Sim: {best_sim:.4f})")
     
-    # 3. 收集提示词
+
     prompt_lib = create_prompt_library(best_subject)
     print(f"Generated {len(prompt_lib)} prompts.")
     
-    # 4. 将模型转换为编辑后模型
+
     print("\n[Step 2] Applying edits to model (for entropy calculation)...")
     if not apply_edits_to_model(model, config_rec.delta_file_path):
         print("Failed to apply edits.")
         return
 
-    # 5. 评估提示词 (基于熵和信息价值)
+
     print("\n[Step 3] Evaluating prompts using Score = InfoValue / Entropy...")
     print("-" * 120)
     print(f"{'Rank':<4} {'Score':<10} {'Entropy':<10} {'Max Prob':<10} {'IV':<5} {'Pred':<15} {'Prompt'}")
@@ -241,7 +225,7 @@ def main():
             print(f"Error evaluating prompt '{prompt}': {e}")
             continue
 
-    # 根据 Score 降序排序
+
     prompt_scores_entropy.sort(key=lambda x: x['score'], reverse=True)
 
     true_prompt = "The mother tongue of {} is"
@@ -262,7 +246,7 @@ def main():
     else:
         print("\n⚠️ Note: True prompt not in Top 10.")
 
-    # 打印真实提示词的排名
+
     print("\nChecking True Prompt rank based on Score...")
     rank = next((i+1 for i,item in enumerate(prompt_scores_entropy) if item["prompt"]==true_prompt), None)
     

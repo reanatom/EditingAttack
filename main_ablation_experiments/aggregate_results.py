@@ -1,9 +1,4 @@
-"""
-聚合 camouflage_scale 消融实验结果
-生成两个 Excel 表格：
-1. privacy_runs={n}.xlsx - 隐私保护水平（平均排名）
-2. effect_runs={n}.xlsx - 模型效用（GLUE 分数，均值±标准差）
-"""
+
 
 import os
 import json
@@ -13,22 +8,20 @@ import pandas as pd
 import numpy as np
 
 
-def extract_scale_from_dirname(dirname: str) -> int:
-    """从目录名提取 scale 值
-    例如: 'camouflage_scale=5' -> 5
-    """
+def extract_scale_from_dirname(dirname: str) -> float:
+
     try:
-        # 格式: camouflage_scale=X
+
         if dirname.startswith("camouflage_scale="):
             scale_str = dirname.replace("camouflage_scale=", "").strip("'\"")
-            return int(scale_str)
+            return float(scale_str)
     except:
         pass
     return None
 
 
 def count_edit_dirs(alg_dir: Path) -> int:
-    """统计算法目录下有多少个 edit 开头的目录"""
+
     if not alg_dir.exists():
         return 0
     edit_dirs = [d for d in alg_dir.iterdir() if d.is_dir() and d.name.startswith("edit")]
@@ -110,7 +103,7 @@ def aggregate_results():
     """主函数：聚合结果并生成两个 Excel 表格"""
     
     results_dir = Path("main_ablation_experiments/results")
-    
+    # results_dir = Path("main_ablation_experiments/results/zsre")
     if not results_dir.exists():
         print(f"Error: Results directory not found: {results_dir}")
         return
@@ -139,7 +132,8 @@ def aggregate_results():
     
     # 2. 从第一个 scale 目录提取算法名称
     first_scale_dir = scale_dirs[0][1]
-    alg_dirs = [d.name for d in first_scale_dir.iterdir() if d.is_dir()]
+    # alg_dirs = [d.name for d in first_scale_dir.iterdir() if d.is_dir()]
+    alg_dirs = ["ROME_defence"]
     alg_names = sorted(alg_dirs)
     
     print(f"Found algorithms: {alg_names}")
@@ -179,9 +173,9 @@ def aggregate_results():
     
     privacy_df = pd.DataFrame(privacy_data)
     privacy_df = privacy_df.set_index("camouflage_scale")
-    
-    # 保存隐私表格
     privacy_filename = f"main_ablation_experiments/privacy_runs={n_runs}.xlsx"
+    # 保存隐私表格
+    # privacy_filename = f"main_ablation_experiments/privacy_runs_zsre={n_runs}.xlsx"
     privacy_df.to_excel(privacy_filename)
     print(f"Privacy table saved to: {privacy_filename}")
     print(privacy_df)
@@ -251,6 +245,7 @@ def aggregate_results():
     
     # 保存效用表格
     effect_filename = f"main_ablation_experiments/effect_runs={n_runs}.xlsx"
+    # effect_filename = f"main_ablation_experiments/effect_runs_zsre={n_runs}.xlsx"
     effect_df_multi.to_excel(effect_filename)
     print(f"\nEffect table saved to: {effect_filename}")
     print(effect_df_multi)

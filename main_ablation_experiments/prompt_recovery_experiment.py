@@ -32,6 +32,8 @@ from memit.memit_main import apply_memit_to_model
 from memit.memit_hparams import MEMITHyperParams
 from AlphaEdit.AlphaEdit_main import apply_AlphaEdit_to_model, get_cov as alphaedit_get_cov
 from AlphaEdit.AlphaEdit_hparams import AlphaEditHyperParams
+from rome.rome_main import apply_rome_to_model
+from rome.rome_hparams import ROMEHyperParams
 from util.data_loader import load_dataset_data
 from util.globals import HPARAMS_DIR, DATA_DIR, RESULTS_DIR
 from util import nethook
@@ -57,7 +59,8 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 MODEL_NAME_MAP = {
     "gpt2-xl": "gpt2-xl",
     "gpt-j": "EleutherAI/gpt-j-6b",
-    "Llama3": "meta-llama/Meta-Llama-3-8B-Instruct"
+    "Llama3": "meta-llama/Meta-Llama-3-8B-Instruct",
+    "Qwen2.5": "Qwen/Qwen2.5-7B-Instruct"
 }
 
 # Hyperparameter file mapping
@@ -65,14 +68,22 @@ HPARAMS_FILE_MAP = {
     "gpt2-xl": {
         "MEMIT": "gpt2-xl.json",
         "AlphaEdit": "gpt2-xl.json",
+        "ROME": "gpt2-xl.json",
     },
     "gpt-j": {
         "MEMIT": "EleutherAI_gpt-j-6B.json",
         "AlphaEdit": "EleutherAI_gpt-j-6B.json",
+        "ROME": "EleutherAI_gpt-j-6B.json",
     },
     "Llama3": {
         "MEMIT": "Llama3-8B.json",
         "AlphaEdit": "Llama3-8B.json",
+        "ROME": "Llama3-8B.json",
+    },
+    "Qwen2.5":{
+        "MEMIT": "Qwen2.5-7B.json",
+        "AlphaEdit": "Qwen2.5-7B.json",
+        "ROME": "Qwen2.5-7B.json",
     }
 }
 
@@ -254,6 +265,9 @@ def run_single_experiment(
     elif alg_name == "AlphaEdit":
         params_path = HPARAMS_DIR / "AlphaEdit" / hparams_fname
         hparams = AlphaEditHyperParams.from_json(params_path)
+    elif alg_name == "ROME":
+        params_path = HPARAMS_DIR / "ROME" / hparams_fname
+        hparams = ROMEHyperParams.from_json(params_path)
     else:
         raise ValueError(f"Unknown algorithm: {alg_name}")
     
@@ -271,6 +285,9 @@ def run_single_experiment(
     ds_list = list(ds)
     
     # Sample num_edits samples for editing
+    if alg_name == "ROME" and num_edits != 1:
+        print(f"Warning: ROME only supports num_edits=1 in this experiment; overriding num_edits {num_edits} -> 1")
+        num_edits = 1
     np.random.seed(run_id * 12345)
     random.seed(run_id * 12345)
     sampled_records = random.sample(ds_list, num_edits)
@@ -497,6 +514,16 @@ def run_single_experiment(
                 cache_template=None,
                 cache_c=cache_c,
                 P=P,
+            )
+        elif alg_name == "ROME":
+            # ROME is a single-edit method in this prompt recovery experiment.
+            edited_model, _ = apply_rome_to_model(
+                model=model,
+                tok=tok,
+                request=edit_data,
+                hparams=hparams,
+                copy=False,
+                return_orig_weights=False,
             )
         else:
             raise ValueError(f"Unknown algorithm: {alg_name}")
@@ -785,11 +812,14 @@ def run_prompt_recovery_experiments():
     sentence_model = load_sentence_model()
     
     # Experiment configuration
-    models = ["Llama3", "gpt2-xl", "gpt-j"]
+    # models = ["Llama3", "gpt2-xl", "gpt-j"]
+    # models = ["Llama3", "gpt2-xl", "Qwen2.5"]
+    models = ["Llama3", "gpt-j", "Qwen2.5"]
+    # models = ["Qwen2.5"]
     datasets = ["mcf", "zsre"]
-    # algorithms = ["MEMIT", "AlphaEdit"]
-    algorithms = ["MEMIT"]
-    num_edits_list = [10, 50, 100]
+    algorithms = ["MEMIT", "AlphaEdit", "ROME"]
+    # algorithms = ["ROME"]
+    num_edits_list = [1]
     
     # 统一为 5 次独立实验
     def get_n_runs(num_edits):
@@ -806,14 +836,19 @@ def run_prompt_recovery_experiments():
     total_experiments = 0
     for num_edits in num_edits_list:
         n_runs = get_n_runs(num_edits)
-        total_experiments += len(models) * len(algorithms) * len(datasets) * n_runs
+        # NOTE: ROME is forced to num_edits=1, so it should not be counted here.
+        total_experiments += len(models) * len([a for a in algorithms if a != "ROME"]) * len(datasets) * n_runs
+    # Add ROME experiments (num_edits=1 only)
+    if "ROME" in algorithms:
+        total_experiments += len(models) * 1 * len(datasets) * get_n_runs(1)
     
     experiment_count = 0
     
     for model_name in models:
         for alg_name in algorithms:
             for ds_name in datasets:
-                for num_edits in num_edits_list:
+                effective_num_edits_list = [1] if alg_name == "ROME" else num_edits_list
+                for num_edits in effective_num_edits_list:
                     hparams_fname = HPARAMS_FILE_MAP[model_name][alg_name]
                     n_runs = get_n_runs(num_edits)
                     

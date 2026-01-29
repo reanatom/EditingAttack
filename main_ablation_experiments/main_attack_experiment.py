@@ -47,7 +47,8 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 MODEL_NAME_MAP = {
     "gpt2-xl": "gpt2-xl",
     "gpt-j": "EleutherAI/gpt-j-6b",
-    "Llama3": "meta-llama/Meta-Llama-3-8B-Instruct"
+    "Llama3": "meta-llama/Meta-Llama-3-8B-Instruct",
+    "Qwen2.5": "Qwen/Qwen2.5-7B-Instruct"
 }
 
 # Hyperparameter file mapping
@@ -66,6 +67,11 @@ HPARAMS_FILE_MAP = {
         "MEMIT": "Llama3-8B.json",
         "AlphaEdit": "Llama3-8B.json",
         "ROME": "Llama3-8B.json"
+    },
+    "Qwen2.5":{
+        "MEMIT": "Qwen2.5-7B.json",
+        "AlphaEdit": "Qwen2.5-7B.json",
+        "ROME": "Qwen2.5-7B.json"
     }
 }
 
@@ -83,6 +89,9 @@ ATTACK_CONFIG_MAP = {
     ("gpt2-xl", "ROME"): (17, "transformer.h.{}.mlp.c_proj"),
     ("gpt-j", "ROME"): (5, "transformer.h.{}.mlp.fc_out"),
     ("Llama3", "ROME"): (5, "model.layers.{}.mlp.down_proj"),
+    ("Qwen2.5", "MEMIT"): (4, "model.layers.{}.mlp.down_proj"),
+    ("Qwen2.5", "AlphaEdit"): (4, "model.layers.{}.mlp.down_proj"),
+    ("Qwen2.5", "ROME"): (5, "model.layers.{}.mlp.down_proj"),
 }
 
 
@@ -675,10 +684,11 @@ def run_multi_edit_experiments():
     print("=" * 80)
     
     # Experiment configuration
-    models = ["gpt2-xl", "gpt-j", "Llama3"]
+    # models = ["gpt2-xl", "gpt-j", "Llama3"]
+    models = ["Qwen2.5", "gpt-j", "Llama3"]
     num_edit_settings = [10, 50, 100]
-    # algorithms = ["AlphaEdit", "MEMIT"]
-    algorithms = ["AlphaEdit"]
+    algorithms = ["MEMIT","AlphaEdit"]
+    # algorithms = ["AlphaEdit"]
     datasets = ["mcf", "zsre"]
     n_independent_runs = 5
     
@@ -760,7 +770,8 @@ def run_single_edit_experiments():
     print("=" * 80)
     
     # Experiment configuration
-    models = ["gpt2-xl", "gpt-j", "Llama3"]
+    # models = ["gpt2-xl", "gpt-j", "Llama3"]
+    models = ["Qwen2.5", "gpt-j", "Llama3"]
     algorithms = ["ROME"]
     datasets = ["mcf", "zsre"]
     num_edits = 1  # ROME only supports single edit
