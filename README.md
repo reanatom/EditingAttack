@@ -1,13 +1,17 @@
 # [ICML'26 regular] Reverse-Engineering Model Editing on Language Models
 
-
+___
 > Reverse-Engineering Model Editing on Language Models,\
 >Zhiyu Sun, Minrui Luo, Yu Wang, Zhili Chen, Tianxing He. *ICML, 2026*, [Link](https://arxiv.org/abs/2602.10134)
 <p align="center">
   <img src="/resource/KSTER.png" width="90%">
 </p>
 
+## Abstract
+___
+Large language models (LLMs) are pretrained on corpora containing trillions of tokens and, therefore, inevitably memorize sensitive information. Locate-then-edit methods, as a mainstream paradigm of model editing, offer a promising solution by modifying model parameters without retraining. However, in this work, we reveal a critical vulnerability of this paradigm: the parameter updates inadvertently serve as a side channel, enabling attackers to recover the edited data. We propose a two-stage reverse-engineering attack named *KSTER* (**K**ey**S**paceRecons**T**ruction-then-**E**ntropy**R**eduction) that leverages the low-rank structure of these updates. First, we theoretically show that the row space of the update matrix encodes a “fingerprint” of the edited subjects, enabling accurate subject recovery via spectral analysis. Second, we introduce an entropy-based prompt recovery attack that reconstructs the semantic context of the edit. Extensive experiments on multiple LLMs demonstrate that our attacks can recover edited data with high success rates. Furthermore, we propose *subspace camouflage*, a defense strategy that obfuscates the update fingerprint with semantic decoys. This approach effectively mitigates reconstruction risks without compromising editing utility.
 ## Requirements
+___
 **At least one A40 48G GPU.**
 
 - torch==2.6.0
@@ -23,6 +27,7 @@
 - nltk==3.9.1
 
 ## How to Run
+___
 Our main experiments live in `main_ablation_experiments/`.
 
 ### 1) Subject Inference Attack (Stage I)
@@ -84,7 +89,17 @@ Run (example):
 ```bash
 python -m additional_experiments.prompt_number_impact --model_name Llama3 --alg_name MEMIT --num_edits 100 --ds_name mcf --n_runs 5
 ```
+## Citation
+___
+```
+@inproceedings{sun2026reverse,
+  title={Reverse-Engineering Model Editing on Language Models},
+  author={Sun, Zhiyu and Luo, Minrui and Wang, Yu and Chen, Zhili and He, Tianxing},
+  booktitle={Forty-third International Conference on Machine Learning}
+}
+```
 
 ## Acknowledge
+___
 
 Our repo is built on AlphaEdit. We thank the authors for sharing their code.
