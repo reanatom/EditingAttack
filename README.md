@@ -1,4 +1,4 @@
-# [ICML'26 regular] Reverse-Engineering Model Editing on Language Models 
+# [[ICML'26 regular] Reverse-Engineering Model Editing on Language Models](https://arxiv.org/abs/2602.10134) 
 
 <p align="center">
   <img src="/resource/KSTER.png" width="90%">
