@@ -12,7 +12,7 @@ from util.globals import STATS_DIR
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 
-# 模拟 nethook
+
 class nethook:
     @staticmethod
     def get_parameter(model, w_name):

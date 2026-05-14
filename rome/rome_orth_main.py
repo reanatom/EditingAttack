@@ -32,6 +32,7 @@ def apply_rome_orth_to_model(
     copy=False,
     return_orig_weights=False,
     keep_original_weight=False,
+    ds_name="mcf",
     **kwargs
 ) -> Tuple[AutoModelForCausalLM, List[str]]:
     
@@ -41,7 +42,7 @@ def apply_rome_orth_to_model(
 
     weights_copy = {}
 
-    deltas = execute_rome_orth(model, tok, request, hparams)
+    deltas = execute_rome_orth(model, tok, request, hparams, ds_name=ds_name)
 
     with torch.no_grad():
         for w_name, (delta_u, delta_v) in deltas.items():
@@ -63,6 +64,7 @@ def execute_rome_orth(
     tok: AutoTokenizer,
     request: Dict,
     hparams: ROMEHyperParams,
+    ds_name="mcf"
 ) -> Dict[str, Tuple[torch.Tensor]]:
 
     # Update target and print info
@@ -120,7 +122,7 @@ def execute_rome_orth(
         # 4. Generate n_raw
         try:
             from util.data_loader import load_dataset_data
-            full_name_db, _ = load_dataset_data(ds_name="zsre",limit=2000)
+            full_name_db, _ = load_dataset_data(ds_name=ds_name,limit=2000)
         except ImportError:
             full_name_db = [
                 "Albert Camus", "Jean-Paul Sartre", "Simone de Beauvoir", "Victor Hugo", 
@@ -166,8 +168,7 @@ def execute_rome_orth(
         n_orth = n_raw - proj
         
         # 6. Scale to n_final
-        # n_final 应该是 cur_repr 模长的 camouflage_scale 倍
-        # 从 hparams 读取 camouflage_scale，如果不存在则使用默认值 5.0
+
         camouflage_scale = float(getattr(hparams, 'camouflage_scale', 5.0))
         n_orth_norm = torch.norm(n_orth)
         cur_repr_norm = torch.norm(cur_repr)
@@ -179,7 +180,7 @@ def execute_rome_orth(
         
         # 8. Calculate lambda
         # lambda = (k^T @ u) / (k_final^T @ u)
-        # k 是 cur_repr，k_final 是 k_final，u 是 left_vector
+
         numer = torch.dot(cur_repr, left_vector)
         denom = torch.dot(k_final, left_vector)
         lam = (numer / (denom + 1e-8)).item()
@@ -199,10 +200,7 @@ def execute_rome_orth(
         # Apply
         with torch.no_grad():
             weights[weight_name][...] += upd_matrix
-            # Return modified vectors scaled by sqrt(lambda) or similar? 
-            # Standard ROME returns u, v such that u@v.T = upd.
-            # Here we have left_new and right.
-            # upd = left_new @ (lam * right)^T
+
             deltas[weight_name] = (
                 left_vector_new.detach(),
                 right_vector.detach() * lam 

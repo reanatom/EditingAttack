@@ -29,11 +29,7 @@ def count_edit_dirs(alg_dir: Path) -> int:
 
 
 def load_privacy_data(alg_dir: Path) -> Tuple[float, float]:
-    """加载 privacy_rank.json 中的 overall_average_rank 和标准差
-    
-    Returns:
-        Tuple[mean, std]
-    """
+
     privacy_file = alg_dir / "privacy_rank.json"
     if not privacy_file.exists():
         return (np.nan, np.nan)
@@ -42,14 +38,14 @@ def load_privacy_data(alg_dir: Path) -> Tuple[float, float]:
         with open(privacy_file, 'r') as f:
             data = json.load(f)
         
-        # 优先使用 individual_run_avg_ranks 计算均值和标准差
+
         if "individual_run_avg_ranks" in data and data["individual_run_avg_ranks"]:
             ranks = data["individual_run_avg_ranks"]
             mean_rank = np.mean(ranks)
             std_rank = np.std(ranks)
             return (mean_rank, std_rank)
         
-        # 如果没有 individual_run_avg_ranks，使用 overall_average_rank，标准差为 0
+
         avg_rank = data.get("overall_average_rank", np.nan)
         return (avg_rank, 0.0)
         
@@ -59,12 +55,8 @@ def load_privacy_data(alg_dir: Path) -> Tuple[float, float]:
 
 
 def load_glue_scores(alg_dir: Path, datasets: List[str]) -> Dict[str, Tuple[float, float]]:
-    """加载所有 edit* 目录下的 GLUE 分数，计算均值和标准差
-    
-    Returns:
-        Dict[dataset_name, (mean, std)]
-    """
-    # 收集所有 edit 目录的分数
+
+
     dataset_scores = {ds: [] for ds in datasets}
     
     edit_dirs = sorted([d for d in alg_dir.iterdir() if d.is_dir() and d.name.startswith("edit")])
@@ -78,7 +70,7 @@ def load_glue_scores(alg_dir: Path, datasets: List[str]) -> Dict[str, Tuple[floa
             with open(glue_file, 'r') as f:
                 data = json.load(f)
             
-            # 提取各数据集的 f1 分数
+
             for ds in datasets:
                 if ds in data and isinstance(data[ds], dict) and "f1" in data[ds]:
                     f1_score = data[ds]["f1"]
@@ -86,7 +78,7 @@ def load_glue_scores(alg_dir: Path, datasets: List[str]) -> Dict[str, Tuple[floa
         except Exception as e:
             print(f"Error loading {glue_file}: {e}")
     
-    # 计算均值和标准差
+
     results = {}
     for ds in datasets:
         if dataset_scores[ds]:
@@ -100,7 +92,7 @@ def load_glue_scores(alg_dir: Path, datasets: List[str]) -> Dict[str, Tuple[floa
 
 
 def aggregate_results():
-    """主函数：聚合结果并生成两个 Excel 表格"""
+
     
     results_dir = Path("main_ablation_experiments/results")
     # results_dir = Path("main_ablation_experiments/results/zsre")
@@ -112,7 +104,7 @@ def aggregate_results():
     print("Aggregating Camouflage Scale Ablation Results")
     print("="*80)
     
-    # 1. 扫描所有 camouflage_scale 目录
+
     scale_dirs = []
     for d in results_dir.iterdir():
         if d.is_dir() and d.name.startswith("camouflage_scale"):
@@ -124,13 +116,13 @@ def aggregate_results():
         print("Error: No camouflage_scale directories found")
         return
     
-    # 按 scale 排序
+
     scale_dirs.sort(key=lambda x: x[0])
     scales = [s for s, _ in scale_dirs]
     
     print(f"Found scales: {scales}")
     
-    # 2. 从第一个 scale 目录提取算法名称
+
     first_scale_dir = scale_dirs[0][1]
     # alg_dirs = [d.name for d in first_scale_dir.iterdir() if d.is_dir()]
     alg_dirs = ["ROME_defence"]
@@ -138,7 +130,7 @@ def aggregate_results():
     
     print(f"Found algorithms: {alg_names}")
     
-    # 3. 确定 n_runs（从第一个算法的第一个 scale 获取）
+
     n_runs = 0
     for alg_name in alg_names:
         alg_dir = first_scale_dir / alg_name
@@ -152,7 +144,7 @@ def aggregate_results():
         print("Error: No edit directories found")
         return
     
-    # 4. 生成隐私表格（Table 1）- 均值 ± 标准差
+
     print("\nGenerating Privacy Table...")
     privacy_data = []
     
@@ -162,7 +154,7 @@ def aggregate_results():
             alg_dir = scale_dir / alg_name
             mean_rank, std_rank = load_privacy_data(alg_dir)
             
-            # 格式化为 "mean ± std"
+
             if not np.isnan(mean_rank):
                 formatted = f"{mean_rank:.4f} ± {std_rank:.4f}"
             else:
@@ -174,19 +166,19 @@ def aggregate_results():
     privacy_df = pd.DataFrame(privacy_data)
     privacy_df = privacy_df.set_index("camouflage_scale")
     privacy_filename = f"main_ablation_experiments/privacy_runs={n_runs}.xlsx"
-    # 保存隐私表格
+
     # privacy_filename = f"main_ablation_experiments/privacy_runs_zsre={n_runs}.xlsx"
     privacy_df.to_excel(privacy_filename)
     print(f"Privacy table saved to: {privacy_filename}")
     print(privacy_df)
     
-    # 5. 生成效用表格（Table 2）- 多级表头
+
     print("\nGenerating Effect Table...")
     
-    # GLUE 数据集列表
+
     datasets = ["sst", "mmmlu", "mrpc", "cola", "rte", "nli"]
     
-    # 收集数据
+
     effect_data = []
     
     for scale, scale_dir in scale_dirs:
@@ -196,33 +188,32 @@ def aggregate_results():
             alg_dir = scale_dir / alg_name
             glue_scores = load_glue_scores(alg_dir, datasets)
             
-            # 为每个数据集添加列
+
             for ds in datasets:
                 mean, std = glue_scores[ds]
-                # 格式化为 "mean ± std"
+
                 if not np.isnan(mean):
                     formatted = f"{mean:.4f} ± {std:.4f}"
                 else:
                     formatted = "N/A"
                 
-                # 列名: "dataset_algorithm"
+
                 col_name = f"{ds}_{alg_name}"
                 row_data[col_name] = formatted
         
         effect_data.append(row_data)
     
-    # 创建 DataFrame
+
     effect_df = pd.DataFrame(effect_data)
     effect_df = effect_df.set_index("camouflage_scale")
     
-    # 重新组织列以实现多级表头
-    # 创建多级列索引
+
     multi_columns = []
     for ds in datasets:
         for alg_name in alg_names:
             multi_columns.append((ds, alg_name))
     
-    # 重新排列 DataFrame 列
+
     reordered_data = []
     for scale, scale_dir in scale_dirs:
         row = []
@@ -238,12 +229,12 @@ def aggregate_results():
                 row.append(formatted)
         reordered_data.append(row)
     
-    # 创建多级索引的 DataFrame
+
     multi_index = pd.MultiIndex.from_tuples(multi_columns, names=["Dataset", "Algorithm"])
     effect_df_multi = pd.DataFrame(reordered_data, columns=multi_index, index=scales)
     effect_df_multi.index.name = "camouflage_scale"
     
-    # 保存效用表格
+
     effect_filename = f"main_ablation_experiments/effect_runs={n_runs}.xlsx"
     # effect_filename = f"main_ablation_experiments/effect_runs_zsre={n_runs}.xlsx"
     effect_df_multi.to_excel(effect_filename)

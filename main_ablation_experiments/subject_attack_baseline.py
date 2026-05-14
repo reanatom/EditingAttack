@@ -1,18 +1,4 @@
-"""
-Subject Attack Baseline: 基于JS散度的编辑主语推断攻击
 
-该脚本作为 main_attack_experiment.py 的基线对比，使用 JS 散度来判断哪些主语被编辑。
-
-逻辑：
-1. 获取编辑前模型 (Pre-Model) 和编辑后模型 (Post-Model)。
-2. 使用通用模板 "The mother tongue of {} is"。
-3. 遍历候选主语库，分别输入 Pre-Model 和 Post-Model，获取 Next Token 分布。
-4. 计算两个分布的 JS 散度。
-5. 选取 JS 散度变化最大的 N 个主语（N=num_edits）作为推测的编辑对象。
-6. 计算召回率。
-
-实验设置与 main_attack_experiment.py 保持一致。
-"""
 
 import os
 import sys
@@ -76,16 +62,12 @@ HPARAMS_FILE_MAP = {
 }
 
 def create_name_database(ds_name="mcf", limit=2000):
-    """
-    创建包含候选主语的数据库
-    """
+
     subjects, _ = load_dataset_data(ds_name=ds_name, limit=limit)
     return subjects
 
 def get_project(model, tok, layer, hparams):
-    """
-    计算投影矩阵P（用于AlphaEdit）
-    """
+
     force_recompute = False
     cov = alphaedit_get_cov(
         model,
@@ -105,19 +87,7 @@ def get_project(model, tok, layer, hparams):
     return U[:, small_singular_indices] @ U[:, small_singular_indices].T
 
 def get_next_token_probs(model, tok, subjects, template, batch_size=64):
-    """
-    获取一系列主语在给定模板下的 Next Token 概率分布
-    
-    Args:
-        model: 模型
-        tok: Tokenizer
-        subjects: 主语列表
-        template: 提示词模板
-        batch_size: 批次大小
-        
-    Returns:
-        Tensor of shape (num_subjects, vocab_size) on CPU
-    """
+
     model.eval()
     prompts = [template.format(s) for s in subjects]
     
@@ -135,22 +105,13 @@ def get_next_token_probs(model, tok, subjects, template, batch_size=64):
             inputs = tok(batch_prompts, return_tensors="pt", padding=True, truncation=True).to(model.device)
             
             outputs = model(**inputs)
-            # 获取最后一个 token 的 logits
-            # 对于 causal LM，inputs.input_ids[:, -1] 对应的输出 logits 预测的是下一个 token
-            # 注意：如果使用 left padding，最后一个 token 就在 -1。如果是 right padding，需要找到真实长度。
-            # 这里简化处理，假设 padding 处理得当，或者我们直接取 -1 (通常 inputs['attention_mask'] 会被模型处理)
-            # 更严谨的做法是取 attention_mask 最后一个 1 的位置，但在 batch inference 中通常 -1 是 padding (right pad) 或者 最后一个词 (left pad)。
-            # AutoTokenizer 默认通常是 right padding。但是 model(**inputs) 会处理 mask。
-            # 如果是 right padding，-1 位置可能是 pad token 的输出。
-            # 为了保险，我们需要取出每个序列最后一个有效 token 的 logits。
+
             
             logits = outputs.logits
-            
-            # 获取每个样本最后一个有效 token 的索引
-            # attention_mask: (batch, seq_len)
+
             last_token_indices = inputs.attention_mask.sum(dim=1) - 1
             
-            # 提取对应的 logits: (batch, vocab_size)
+
             batch_logits = logits[torch.arange(logits.size(0)), last_token_indices]
             
             probs = F.softmax(batch_logits, dim=-1).cpu()
@@ -159,11 +120,8 @@ def get_next_token_probs(model, tok, subjects, template, batch_size=64):
     return torch.cat(all_probs, dim=0)
 
 def calculate_js_divergence(p, q):
-    """
-    计算两个分布 P 和 Q 之间的 JS 散度
-    P, Q: (num_subjects, vocab_size), 已经是概率分布 (sum=1)
-    """
-    # 加上极小值防止 log(0)
+
+
     epsilon = 1e-9
     
     # M = 0.5 * (P + Q)
@@ -246,10 +204,16 @@ def run_single_experiment(
     
     # 4. Compute Pre-edit Probabilities (Baseline Attack Step 1)
     print("\n[Step 3] Computing Pre-edit probabilities...")
-    knowledge_template = "The city {} lives in is"
+    # knowledge_template = "The city {} lives in is"
+
+    # knowledge_template = "The mother tongue of {} is"
+    # knowledge_template = "The US dollar {} earns each year is"
+    # knowledge_template = "The detailed address of {} is"
+    # knowledge_template = "We know that {} is"
+    knowledge_template = "{}, who is"
     name_database = create_name_database(ds_name=ds_name)
     
-    # 获取 Pre-edit 分布 (CPU Tensor to save VRAM)
+
     pre_edit_probs = get_next_token_probs(model, tok, name_database, knowledge_template)
     
     # 5. Execute editing
@@ -262,7 +226,7 @@ def run_single_experiment(
                 tok=tok,
                 requests=edit_data,
                 hparams=hparams,
-                copy=False, # In-place or copy=False logic
+                copy=False,
                 return_orig_weights=False,
             )
         elif alg_name == "AlphaEdit":
@@ -270,7 +234,7 @@ def run_single_experiment(
             print("Initializing cache_c and P for AlphaEdit...")
             W_out = nethook.get_parameter(model, f"{hparams.rewrite_module_tmp.format(hparams.layers[-1])}.weight")
             
-            # 使用与 main_attack_experiment.py 相同的逻辑初始化 P
+
             if hparams.model_name == "gpt2-xl":
                 cache_c = torch.zeros((len(hparams.layers), W_out.shape[0], W_out.shape[0]), device="cpu")
                 P = torch.zeros((len(hparams.layers), W_out.shape[0], W_out.shape[0]), device="cpu")
@@ -318,8 +282,7 @@ def run_single_experiment(
     
     # 6. Compute Post-edit Probabilities (Baseline Attack Step 2)
     print("\n[Step 5] Computing Post-edit probabilities...")
-    # 注意：如果 copy=False，model 和 edited_model 可能是同一个对象。
-    # 之前的 pre_edit_probs 已经在 Step 3 计算并保存在 CPU 上了，所以这里直接用 edited_model 计算即可。
+
     post_edit_probs = get_next_token_probs(edited_model, tok, name_database, knowledge_template)
     
     # 7. Compute JS Divergence (Baseline Attack Step 3)
@@ -335,10 +298,10 @@ def run_single_experiment(
             "score": js_scores[i].item()
         })
     
-    # 降序排列 (JS散度越大，表示变化越大，越可能是编辑目标)
+
     scored_subjects.sort(key=lambda x: x["score"], reverse=True)
     
-    # 取前 num_edits 个作为预测结果
+
     top_n_names = {item["name"] for item in scored_subjects[:num_edits]}
     
     recall_count = sum(1 for subj in true_subjects if subj in top_n_names)
@@ -355,7 +318,7 @@ def run_single_experiment(
     return recall_rate
 
 def generate_tables(all_results, models, algorithms, datasets, num_edit_settings, results_dir, suffix=""):
-    """生成结果表"""
+
     recall_data = []
     for model in models:
         for alg in algorithms:
@@ -390,14 +353,15 @@ def generate_tables(all_results, models, algorithms, datasets, num_edit_settings
     print(df_recall.to_string(index=False))
 
 def run_multi_edit_experiments():
-    """运行多编辑实验"""
+
     print("\n" + "=" * 80)
     print("Multi-Edit Baseline Attack Experiments")
     print("=" * 80)
     
-    models = ["Llama3", "gpt-j"]
-    num_edit_settings = [10, 50, 100]
-    algorithms = ["MEMIT","AlphaEdit"]
+    models = ["Llama3", "gpt-j", "Qwen2.5"]
+    # num_edit_settings = [10, 50, 100]
+    num_edit_settings = [100]
+    algorithms = ["MEMIT", "AlphaEdit"]
     datasets = ["mcf", "zsre"]
     # models = ["Llama3"]
     # num_edit_settings = [10,50,100]
@@ -457,7 +421,7 @@ def run_multi_edit_experiments():
     generate_tables(all_results, models, algorithms, datasets, num_edit_settings, results_dir, suffix="_multi")
 
 def run_single_edit_experiments():
-    """运行单编辑实验 (ROME)"""
+
     print("\n" + "=" * 80)
     print("Single-Edit Baseline Attack Experiments (ROME)")
     print("=" * 80)
@@ -511,7 +475,7 @@ def run_single_edit_experiments():
                 
                 all_results[key] = recalls
                 
-                # Intermediate save
+
                 with open(results_dir / "single_edit_intermediate.json", "w") as f:
                     str_key_results = {f"{k[0]}_{k[1]}_{k[2]}_{k[3]}": v for k, v in all_results.items()}
                     json.dump(str_key_results, f, indent=2)

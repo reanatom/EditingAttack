@@ -1,3 +1,9 @@
+# [ICML'26 regular] Reverse-Engineering Model Editing on Language Models 
+
+<p align="center">
+  <img src="/resource/KSTER.png" width="90%">
+</p>
+
 ## Requirements
 **At least one A40 48G GPU.**
 
@@ -43,26 +49,39 @@ python -m main_ablation_experiments.prompt_recovery_experiment
 Run (example):
 
 ```bash
-# Single algorithm
-python -m main_ablation_experiments.camouflage_scale_ablation \
-  --alg_name AlphaEdit_defence \
-  --model_name "meta-llama/Meta-Llama-3-8B-Instruct" \
-  --hparams_fname "Llama3-8B.json" \
-  --ds_name mcf \
-  --num_edits 100 \
-  --n_independent_runs 5 \
-  --scales "0,1,3,5"
-
-# Multiple algorithms in one run (comma-separated)
-python -m main_ablation_experiments.camouflage_scale_ablation \
-  --alg_name "MEMIT_defence,AlphaEdit_defence" \
-  --model_name "meta-llama/Meta-Llama-3-8B-Instruct" \
-  --hparams_fname "Llama3-8B.json" \
-  --ds_name mcf \
-  --num_edits 100 \
-  --n_independent_runs 5 \
-  --scales "0,0.5,1,3,5"
+python -m main_ablation_experiments.camouflage_scale_ablation --alg_name AlphaEdit_defence --model_name meta-llama/Meta-Llama-3-8B-Instruct --hparams_fname Llama3-8B.json --ds_name mcf --num_edits 100 --n_independent_runs 5 --scales 0,1,3,5
 ```
 
+Furthermore, our important additional experiments during rebuttal live in `additional_experiments/`.
 
+### 4) Candidate Subject Size Impact
 
+Run (example):
+
+```bash
+# obtain IMDb dataset
+python -m dsets.imbd_name
+```
+```bash
+python -m additional_experiments.subjects_number_impact --model_name Llama3 --alg_name MEMIT --num_edits 100 --ds_name mcf --n_runs 5
+```
+
+### 5) Sequential Editing Scenario
+
+Run (example):
+
+```bash
+python -m additional_experiments.sequential_subject_recovery_experiment --num_edits 100 --sequential_nums 10 --runs 3
+```
+
+### 6) Candidate Template Size Impact
+
+Run (example):
+
+```bash
+python -m additional_experiments.prompt_number_impact --model_name Llama3 --alg_name MEMIT --num_edits 100 --ds_name mcf --n_runs 5
+```
+
+## Acknowledge
+
+Our repo is built on AlphaEdit. We thank the authors for sharing their code.

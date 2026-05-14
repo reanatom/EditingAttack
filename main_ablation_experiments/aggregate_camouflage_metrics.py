@@ -118,7 +118,7 @@ def aggregate_detailed_metrics():
     
     if not scale_dirs:
         print("Error: No 'camouflage_scale=*' directories found directly under main_ablation_experiments/results/")
-        # 提示用户可能数据在子目录但被忽略了
+
         print("Note: Subdirectories (like 'zsre/') were skipped as per instructions.")
         return
         

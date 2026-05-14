@@ -242,9 +242,9 @@ def main():
     print("-" * 120)
 
     if found_true:
-        print("\n🎉 SUCCESS: True prompt found in Top 10 based on Score!")
+        print("\n SUCCESS: True prompt found in Top 10 based on Score!")
     else:
-        print("\n⚠️ Note: True prompt not in Top 10.")
+        print("\n Note: True prompt not in Top 10.")
 
 
     print("\nChecking True Prompt rank based on Score...")

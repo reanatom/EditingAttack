@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.lines import Line2D
 
-# --- 1. 全局字体与画图设置 ---
+
 plt.rcParams['font.family'] = 'serif'
 plt.rcParams['font.serif'] = ['Times New Roman', 'Times', 'DejaVu Serif']
 plt.rcParams['axes.linewidth'] = 0.8
@@ -15,7 +15,7 @@ plt.rcParams['ytick.labelsize'] = 7
 plt.rcParams['legend.fontsize'] = 8
 plt.rcParams['figure.dpi'] = 300
 
-# --- 2. 数据录入 (Data) ---
+
 # mcf MEMIT/AlphaEdit
 data = {
     'SST': {
@@ -230,7 +230,7 @@ data = {
 
 datasets = ['SST', 'MMLU', 'MRPC', 'COLA', 'RTE', 'NLI']
 
-# --- 3. 绘图主逻辑 ---
+
 fig, axes = plt.subplots(2, 3, figsize=(6.5, 3.4))
 axes = axes.flatten()
 
@@ -263,20 +263,20 @@ for i, ds_name in enumerate(datasets):
         nd_f1 = m_data['no_defense_f1']
         c = styles[method]['color']
 
-        # 1. 主曲线
+
         ax.plot(x, y, color=c, marker=styles[method]['marker'], markersize=3.5, linewidth=1.2, alpha=0.9)
 
-        # 2. 虚线连接
+
         ax.plot([nd_rank, x[0]], [nd_f1, y[0]], color=c, linestyle=':', linewidth=1.0, alpha=0.6)
 
-        # 3. No Defense 基准点 (实心星号)
+
         ax.scatter(nd_rank, nd_f1, color=c, marker='*', s=60, edgecolors='none', facecolors=c,
                    alpha=0.7, zorder=10)
 
-        # 4. 阴影
+
         ax.fill_between(x, y - y_err, y + y_err, color=c, alpha=0.15, edgecolor=None)
 
-    # [修改点1]: 标题字体大小从 10 减小为 9
+
     ax.set_title(ds_name, fontsize=9, pad=5, fontweight='bold')
 
     if i >= 3:
@@ -288,14 +288,14 @@ for i, ds_name in enumerate(datasets):
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
 
-# --- 4. 统一图例 (关键修改：顺序与间距) ---
+
 red_c = styles['AlphaEdit']['color']
 blue_c = styles['MEMIT']['color']
 
 # red_c = styles['CounterFact']['color']
 # blue_c = styles['zsRE']['color']
 
-# [修改点2]: 手动重新排序 Handles，顺序为：AlphaEdit, MEMIT, AlphaEdit (No Def.), MEMIT (No Def.)
+
 custom_handles = [
     # 1. AlphaEdit
     Line2D([0], [0], color=red_c, marker='o', markersize=5, label='AlphaEdit', linestyle='-'),
@@ -325,9 +325,8 @@ custom_handles = [
 
 plt.subplots_adjust(top=0.80, wspace=0.25, hspace=0.45)
 
-# [修改点3]: 调整图例参数
-# columnspacing=1.5 保证列与列之间有足够的间距
-# handletextpad=0.4 保证图标和文字之间的间距适中
+
+
 fig.legend(handles=custom_handles, loc='upper center', bbox_to_anchor=(0.5, 0.98),
            ncol=4, frameon=False, fontsize=8, columnspacing=1.5, handletextpad=0.4)
 

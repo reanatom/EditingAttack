@@ -30,6 +30,7 @@ def apply_AlphaEdit_orth_to_model(
     cache_template: Optional[str] = None,
     cache_c = None,
     P = None,
+    ds_name="mcf"
 ) -> Dict[str, Tuple[torch.Tensor]]:
     """
     Executes the AlphaEdit update algorithm with Orthogonal Camouflage defense.
@@ -147,7 +148,7 @@ def apply_AlphaEdit_orth_to_model(
         # 3. Generate Decoy n_raw (Rank-N Compatible)
         try:
             from util.data_loader import load_dataset_data
-            full_name_db, _ = load_dataset_data(ds_name="zsre",limit=2000)
+            full_name_db, _ = load_dataset_data(ds_name=ds_name,limit=2000)
         except ImportError:
             full_name_db = [
                 "Albert Camus", "Jean-Paul Sartre", "Simone de Beauvoir", "Victor Hugo", 
@@ -231,7 +232,6 @@ def apply_AlphaEdit_orth_to_model(
         n_orth = n_raw - proj # (D, N)
         
         # 5. Scale n_orth to n_final
-        # 从 hparams 读取 camouflage_scale，如果不存在则使用默认值 5.0
         camouflage_scale = float(getattr(hparams, 'camouflage_scale', 5.0))
         layer_ks_norm = torch.norm(layer_ks, dim=0, keepdim=True)
         n_orth_norm = torch.norm(n_orth, dim=0, keepdim=True)
@@ -253,7 +253,7 @@ def apply_AlphaEdit_orth_to_model(
             S2_mat = k_final.T @ u2 # (N, N)
             P_mat = k_final.T @ u1 # (N, N)
             
-            # 新逻辑：scale_matrix = (I+S1_mat)^{-1} S1_mat P_mat^{-1} (I+S2_mat)
+
             term1 = torch.linalg.solve(I + S1_mat + epsilon * I, S1_mat)  # (N, N)
             term2 = torch.linalg.solve(P_mat + epsilon * I, I + S2_mat)   # (N, N)
             scale_matrix = term1 @ term2  # (N, N)
@@ -274,12 +274,12 @@ def apply_AlphaEdit_orth_to_model(
         # Distribute residual across layers
         resid = resid
         
-        # 根据 rank 修正 resid
+
         if target_rank > 1:
-             # Rank > 1: 先修正 resid
+
              resid = resid @ scale_matrix
         else:
-             # Rank 1: scale_factor is scalar (broadcastable)
+
              resid = resid * scale_factor
 
         # Calculate standard AlphaEdit update with corrected residual
@@ -307,7 +307,7 @@ def apply_AlphaEdit_orth_to_model(
             "delta": upd_matrix.detach().cpu().clone(),
             "P": p_current_cpu,
             "n_final": n_final.detach().cpu(),
-            "resid": resid.detach().cpu()  # 存储修正后的 resid
+            "resid": resid.detach().cpu()
         }
         if target_rank > 1:
             storage_dict["scale_matrix"] = scale_matrix.detach().cpu()

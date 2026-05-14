@@ -1,8 +1,3 @@
-"""
-Camouflage Scale Ablation Study
-评估随着 camouflage_scale 增长，防御算法在模型通用能力和隐私层面的 trade-off
-"""
-
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import json
@@ -30,8 +25,6 @@ from util import nethook
 from glue_eval.glue_eval import GLUEEval
 from experiments.py.eval_utils_counterfact import compute_rewrite_quality_counterfact
 from experiments.py.eval_utils_zsre import compute_rewrite_quality_zsre
-
-# Import attack methods
 from experiments.attack_memit_recovery_rank_n import create_name_database as memit_create_db
 from experiments.attack_alphaedit_recovery import create_name_database as alphaedit_create_db
 from experiments.attack_rome_recovery import create_name_database as rome_create_db
@@ -39,10 +32,10 @@ from memit.compute_z import get_module_input_output_at_words
 from util.data_loader import load_dataset_data
 
 def get_candidate_subjects(ds_name):
-    """获取候选主语列表"""
+
     subjects, _ = load_dataset_data(ds_name=ds_name, limit=2000)
     
-    # 确保特定的目标名字在里面
+
     # targets = ["Edwin of Northumbria", "Danielle Darrieux"]
     return subjects
 
@@ -59,7 +52,7 @@ DS_EVAL_METHOD_MAP = {
 
 
 def get_project(model, tok, layer, hparams):
-    """从 evaluate.py 复制的 get_project 函数"""
+
     force_recompute = False
     cov = get_cov(
         model,
@@ -73,12 +66,11 @@ def get_project(model, tok, layer, hparams):
     U, S, _ = torch.linalg.svd(cov, full_matrices=False)
     threshold = hparams.nullspace_threshold
     small_singular_indices = (S < threshold).nonzero(as_tuple=True)[0]
-    print(f"  Null space dimension: {len(small_singular_indices)}")
     return U[:, small_singular_indices] @ U[:, small_singular_indices].T
 
 
 def get_activation_vector(model, tok, name, template, layer, module_template):
-    """获取指定名字在目标层的激活向量"""
+
     context_templates = [template]
     words = [name]
     
@@ -99,25 +91,14 @@ def get_activation_vector(model, tok, name, template, layer, module_template):
 
 
 def attack_memit(model, tok, case_id, target_rank, layer, knowledge_template, module_template, true_subjects, ds_name="mcf"):
-    """MEMIT 攻击评估，返回被编辑主语的排名列表
-    
-    Args:
-        true_subjects: 真实被编辑的主语列表
-        ds_name: 数据集名称
-    """
-    print(f"  [Attack] Running MEMIT attack for case {case_id}...")
-    print(f"  [Attack] True subjects: {true_subjects}")
-    
-    # Load edit amounts
     delta_path = f"multi_case_edit_memit_defence_amount/edit_amounts_batch_case_{case_id}.pt"
     gt_path = f"multi_case_edit_memit_defence_amount/kr_ground_truth_case_{case_id}.pt"
     
     if not Path(delta_path).exists() or not Path(gt_path).exists():
-        print(f"  [Attack] Warning: Files not found for case {case_id}")
         return []
     
     try:
-        # Get Q basis from attack
+
         from experiments.attack_kr_opt import run_attack_simple_k_r_CORRECT
         from types import SimpleNamespace
         
@@ -141,10 +122,10 @@ def attack_memit(model, tok, case_id, target_rank, layer, knowledge_template, mo
         Q_basis = run_attack_simple_k_r_CORRECT(config, model, tok)
         Q_basis = Q_basis.to("cuda").double()
         
-        # Get candidate subjects
+
         name_database = get_candidate_subjects(ds_name)
         
-        # Score candidates
+
         scores = []
         for name in name_database:
             try:
@@ -163,12 +144,12 @@ def attack_memit(model, tok, case_id, target_rank, layer, knowledge_template, mo
         
         scores.sort(key=lambda x: x["score"], reverse=True)
         
-        # Find ranks of true subjects
+
         ranks = []
         for subj in true_subjects:
             rank = next((i+1 for i, s in enumerate(scores) if s["name"] == subj), len(scores))
             ranks.append(rank)
-            print(f"    Subject '{subj}' ranked: {rank} / {len(scores)}")
+
             
         return ranks
         
@@ -180,15 +161,7 @@ def attack_memit(model, tok, case_id, target_rank, layer, knowledge_template, mo
 
 
 def attack_alphaedit(model, tok, case_id, target_rank, layer, knowledge_template, module_template, true_subjects, ds_name="mcf"):
-    """AlphaEdit 攻击评估
-    
-    Args:
-        true_subjects: 真实被编辑的主语列表
-        ds_name: 数据集名称
-    """
-    print(f"  [Attack] Running AlphaEdit attack for case {case_id}...")
-    print(f"  [Attack] True subjects: {true_subjects}")
-    
+
     edit_amounts_path = f"alphaedit_defence_edit_amounts/edit_amounts_batch_case_{case_id}.pt"
     
     if not Path(edit_amounts_path).exists():
@@ -207,12 +180,12 @@ def attack_alphaedit(model, tok, case_id, target_rank, layer, knowledge_template
         delta = layer_data["delta"].cuda().double() if isinstance(layer_data, dict) else layer_data.cuda().double()
         P = layer_data["P"].cuda().double() if isinstance(layer_data, dict) and "P" in layer_data else torch.eye(delta.shape[1]).cuda().double()
         
-        # SVD for subspace
+
         U, S, Vh = torch.linalg.svd(delta, full_matrices=False)
         actual_rank = min(target_rank, Vh.shape[0])
         Q_basis = Vh[:actual_rank, :].T.cuda()
         
-        # Score candidates
+
         name_db = get_candidate_subjects(ds_name)
         scores = []
         
@@ -234,7 +207,7 @@ def attack_alphaedit(model, tok, case_id, target_rank, layer, knowledge_template
         
         scores.sort(key=lambda x: x["score"], reverse=True)
         
-        # Find ranks of true subjects
+
         ranks = []
         for subj in true_subjects:
             rank = next((i+1 for i, s in enumerate(scores) if s["name"] == subj), len(scores))
@@ -249,12 +222,7 @@ def attack_alphaedit(model, tok, case_id, target_rank, layer, knowledge_template
 
 
 def attack_rome(model, tok, case_id, layer, knowledge_template, module_template, true_subjects, ds_name="mcf"):
-    """ROME 攻击评估
-    
-    Args:
-        true_subjects: 真实被编辑的主语列表
-        ds_name: 数据集名称
-    """
+
     print(f"  [Attack] Running ROME attack for case {case_id}...")
     print(f"  [Attack] True subjects: {true_subjects}")
     
@@ -345,7 +313,7 @@ def run_experiment(
     camouflage_scales: List[int],
     ds_name: str = "mcf",
 ):
-    """运行 camouflage_scale 消融实验"""
+
     
     print("="*80)
     print(f"Camouflage Scale Ablation Experiment: {alg_name}, Dataset: {ds_name}")
@@ -427,7 +395,7 @@ def run_experiment(
             
             # Modify hparams with current camouflage_scale
             hparams = params_class.from_json(params_path)
-            # 直接设置 camouflage_scale 属性（Python 的动态特性允许这样做）
+
             hparams.camouflage_scale = scale
             print(f"  Set camouflage_scale = {scale} in hparams")
             
@@ -435,12 +403,7 @@ def run_experiment(
             if "AlphaEdit" in alg_name and P is None:
                 print("\n  Computing P matrices for AlphaEdit (Lazy Init)...")
                 W_out = nethook.get_parameter(model, f"{hparams.rewrite_module_tmp.format(hparams.layers[-1])}.weight")
-                
-                # Determine dimension
-                # GPT-2 weights are transposed (out, in) -> (in, out) in some contexts, but nethook usually returns (out, in) for Linear
-                # Wait, standard pytorch Linear is (out, in).
-                # The original code used shape[0] for gpt2-xl and shape[1] for others.
-                # Let's stick to the original logic to be safe.
+
                 if hparams.model_name == "gpt2-xl":
                     dim = W_out.shape[0]
                 elif hparams.model_name in ["EleutherAI_gpt-j-6B", "Llama3-8B", "phi-1.5"]:
@@ -458,12 +421,10 @@ def run_experiment(
                 print("  P matrices computed and cached.")
                 torch.cuda.empty_cache()
 
-            # Apply editing
             print(f"  Applying {alg_name} with camouflage_scale={scale}...")
             try:
                 if "AlphaEdit" in alg_name:
-                    # Use pre-computed P matrix
-                    # Reset cache_c for this run
+
                     W_out = nethook.get_parameter(model, f"{hparams.rewrite_module_tmp.format(hparams.layers[-1])}.weight")
                     if hparams.model_name == "gpt2-xl":
                         cache_c_run = torch.zeros((len(hparams.layers), W_out.shape[0], W_out.shape[0]), device="cpu")
@@ -479,12 +440,14 @@ def run_experiment(
                         hparams,
                         cache_c=cache_c_run,
                         P=P,
+                        ds_name=ds_name
                     )
                 else:
                     edited_model, _ = apply_algo(
                         model, tok,
                         [{"case_id": r["case_id"], **r["requested_rewrite"]} for r in sampled_records],
                         hparams,
+                        ds_name=ds_name
                     )
                 
                 print(f"  Editing completed.")
@@ -547,7 +510,7 @@ def run_experiment(
             glue_results = {'edit_num': run_idx, 'camouflage_scale': scale}
             out_file = str(run_dir / "glue_results.json")
             
-            # 手动清理 CUDA 缓存
+
             torch.cuda.empty_cache()
             
             try:
@@ -576,20 +539,20 @@ def run_experiment(
             module_template = hparams.rewrite_module_tmp
             target_layer = hparams.layers[0] if hparams.layers else 4
 
-            # 使用第一个 case_id 作为批次文件的 case_id
+
             batch_file_case_id = case_ids[0]
 
-            # 手动清理 CUDA 缓存
+
             torch.cuda.empty_cache()
 
-            # 一次性传入所有真实主语，只调用一次攻击函数
+
             try:
                 if "MEMIT" in alg_name:
                     target_rank = actual_num_edits
                     ranks_this_run = attack_memit(
                         model, tok, batch_file_case_id, target_rank,
                         target_layer, knowledge_template, module_template,
-                        true_subjects,  # 传入所有主语
+                        true_subjects,
                         ds_name=ds_name
                     )
                 elif "AlphaEdit" in alg_name:
@@ -597,20 +560,20 @@ def run_experiment(
                     ranks_this_run = attack_alphaedit(
                         model, tok, batch_file_case_id, target_rank,
                         target_layer, knowledge_template, module_template,
-                        true_subjects,  # 传入所有主语
+                        true_subjects,
                         ds_name=ds_name
                     )
                 elif "ROME" in alg_name:
                     ranks_this_run = attack_rome(
                         model, tok, batch_file_case_id, target_layer,
                         knowledge_template, module_template,
-                        true_subjects,  # 传入所有主语
+                        true_subjects,
                         ds_name=ds_name
                     )
                 else:
                     ranks_this_run = []
                 
-                # Calculate average rank for this run
+
                 if ranks_this_run:
                     avg_rank_this_run = np.mean(ranks_this_run)
                     print(f"  Average rank for this run: {avg_rank_this_run:.2f}")
@@ -621,21 +584,21 @@ def run_experiment(
                 import traceback
                 traceback.print_exc()
 
-            # 1. 删除变量引用
+
             if 'model' in locals(): del model
             if 'edited_model' in locals(): del edited_model
             
-            # 删除 AlphaEdit 特有的缓存
+
             if 'cache_c_run' in locals(): del cache_c_run
 
-            # 2. 强制回收内存 (Python RAM)
+
             import gc
             gc.collect()
 
-            # Clear CUDA cache
+
             torch.cuda.empty_cache()
         
-        # Calculate and save overall privacy rank for this scale
+
         if all_ranks_this_scale:
             overall_avg_rank = np.mean(all_ranks_this_scale)
             privacy_results = {

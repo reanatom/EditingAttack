@@ -30,6 +30,7 @@ def apply_memit_defence_to_model(
     copy=False,
     return_orig_weights=False,
     cache_template: Optional[str] = None,
+    ds_name="mcf"
 ) -> Tuple[AutoModelForCausalLM, Dict[str, Any]]:
     """
     Returns a model with the desired changes.
@@ -42,11 +43,11 @@ def apply_memit_defence_to_model(
     if copy:
         model = deepcopy(model)
 
-    deltas = execute_memit_defence(model, tok, requests, hparams, cache_template=cache_template)
+    deltas = execute_memit_defence(model, tok, requests, hparams, cache_template=cache_template, ds_name=ds_name)
     
     edit_amounts = {}
 
-    # 修改保存路径
+
     # save_dir = Path("./orth_defence_edit_memit_amount")
     save_dir = Path("./multi_case_edit_memit_defence_amount")
 
@@ -68,8 +69,8 @@ def apply_memit_defence_to_model(
     save_path = save_dir / f"edit_amounts_batch_case_{first_case_id}.pt"
 
     print(f"Saving edit amounts dictionary to {save_path}...")
-    save_dir.mkdir(parents=True, exist_ok=True) # 确保目录存在
-    torch.save(edit_amounts, save_path) # 保存字典
+    save_dir.mkdir(parents=True, exist_ok=True)
+    torch.save(edit_amounts, save_path)
     print("Save complete.")
     
     print(f"New weights successfully inserted into {list(deltas.keys())}")
@@ -83,6 +84,7 @@ def execute_memit_defence(
     requests: List[Dict],
     hparams: MEMITHyperParams,
     cache_template: Optional[str] = None,
+    ds_name="mcf"
 ) -> Dict[str, Tuple[torch.Tensor]]:
     """
     Executes the MEMIT update algorithm for the specified update at the specified layer
@@ -214,7 +216,7 @@ def execute_memit_defence(
         force_recompute = False
         # force_recompute = layer != hparams.layers[0]
         
-        # 1. 获取协方差矩阵 (cov) 及其逆 (cov_inv)
+
         cov = get_cov(
             model,
             tok,
@@ -236,7 +238,7 @@ def execute_memit_defence(
             if not force_recompute
             else hparams.mom2_n_samples // 10,
             hparams.mom2_dtype,
-            inv=True, # 获取逆矩阵
+            inv=True,
             force_recompute=force_recompute,
         )
 
@@ -248,21 +250,21 @@ def execute_memit_defence(
         cov = cov.double()
         cov_inv = cov_inv.double()
         
-        # --- 正交伪装防御逻辑开始 ---
-        
-        # 1. 计算辅助向量 u = cov^{-1} @ layer_ks
+
+
+
         u = (cov_inv @ layer_ks) / hparams.mom2_update_weight # (D, N)
         
-        # 2. 生成随机向量 n_raw
+
         # n_raw = torch.randn_like(layer_ks) # (D, N)
         # n_raw = cov.double() @ (cov.double() @ torch.randn_like(layer_ks))
 
         # [New Logic: Decoy n_raw (Rank-N Compatible)]
         try:
             from util.data_loader import load_dataset_data
-            full_name_db, _ = load_dataset_data(ds_name="zsre",limit=2000)
+            full_name_db, _ = load_dataset_data(ds_name=ds_name,limit=2000)
         except ImportError:
-            # 备用列表
+
             full_name_db = [
                 "Albert Camus", "Jean-Paul Sartre", "Simone de Beauvoir", "Victor Hugo", 
                 "Claude Monet", "Marie Curie", "Louis Pasteur", "Gustave Eiffel", 
@@ -340,28 +342,26 @@ def execute_memit_defence(
             # Transpose to match layer_ks (D, N)
             n_raw = decoy_tensor.T
 
-        # 3. 施密特正交化获取 n_orth，使得 n_orth 与 u 正交 (列对列正交)
+
         # proj = (n . u) / (u . u) * u
-        # 对应位置相乘求和
+
         dot_n_u = (n_raw * u).sum(dim=0, keepdim=True) # (1, N)
         dot_u_u = (u * u).sum(dim=0, keepdim=True) # (1, N)
         proj = (dot_n_u / (dot_u_u + 1e-8)) * u # (D, N)
         n_orth = n_raw - proj # (D, N)
         
-        # 4. 设定 camouflage_scale 并拉长 n_orth
-        # 从 hparams 读取 camouflage_scale，如果不存在则使用默认值 5
+
+
         camouflage_scale = getattr(hparams, 'camouflage_scale', 5)
         layer_ks_norm = torch.norm(layer_ks, dim=0, keepdim=True) # (1, N)
         n_orth_norm = torch.norm(n_orth, dim=0, keepdim=True) # (1, N)
         n_final = (n_orth / (n_orth_norm + 1e-8)) * layer_ks_norm * camouflage_scale
         
-        # 5. 计算伪装键 k_final
+
         k_final = layer_ks + n_final
         
-        # 6. 计算修正系数 Scale
-        # Scale = (k_final^T cov^{-1} k_final) / (layer_ks^T cov^{-1} layer_ks)
-        # 分子: (k_final, cov_inv @ k_final)
-        # 分母: (layer_ks, cov_inv @ layer_ks) = (layer_ks, u)
+
+
         
         # num = (k_final * (cov_inv @ k_final)).sum(dim=0) # (N,)
         # denom = (layer_ks * u).sum(dim=0) # (N,)
@@ -369,7 +369,7 @@ def execute_memit_defence(
 
         target_rank = layer_ks.size(1)
 
-        # 7. 计算 adj_k (使用 k_final)
+
         adj_k_raw = torch.linalg.solve(
             hparams.mom2_update_weight * cov + k_final @ k_final.T,
             k_final,
@@ -388,35 +388,28 @@ def execute_memit_defence(
             S2_mat = k_final.T @ u2 # (N, N)
             P_mat = k_final.T @ u1 # (N, N)
 
-            # -----------------------------
-            # 旧逻辑（注释保留，不再使用）
-            # -----------------------------
+
             # target_coeffs = torch.linalg.solve(I + S1_mat, S1_mat)
             # middle_term = (I + S2_mat) @ target_coeffs
             # scale_matrix = torch.linalg.solve(P_mat + epsilon * I, middle_term)
             # adj_k = adj_k_raw @ scale_matrix
             # print(f"Orthogonal Camouflage applied (Rank {target_rank}). Matrix Scale Applied.")
 
-            # -----------------------------
-            # 新逻辑（按用户最新要求）
-            # scale_matrix = (I+S1_mat)^{-1} S1_mat P_mat^{-1} (I+S2_mat)
-            # 该矩阵作用在 resid 和 adj_k_raw 之间：
-            #   upd_matrix = resid @ scale_matrix @ adj_k_raw.T
-            # -----------------------------
+
             
-            # 计算 scale_matrix (N, N)
+
             # scale_matrix = inv(I+S1_mat) @ S1_mat @ inv(P_mat) @ (I+S2_mat)
             term1 = torch.linalg.solve(I + S1_mat + epsilon * I, S1_mat)  # (N, N)
             term2 = torch.linalg.solve(P_mat + epsilon * I, I + S2_mat)   # (N, N)
             scale_matrix = term1 @ term2  # (N, N)
             
-            # 对于后续保存，仍使用 adj_k_raw 作为 adj_k
+
             adj_k = adj_k_raw
             
             print(f"Orthogonal Camouflage applied (Rank {target_rank}). New Scale Matrix (N×N) Applied between resid and adj_k.")
             
         else:
-            # Rank-1 Logic (Scalar) - 保持不变
+
             S1 = (layer_ks * (cov_inv @ layer_ks)).sum(dim=0)
             S2 = (k_final * (cov_inv @ k_final)).sum(dim=0)
             denom = (k_final * (cov_inv @ layer_ks)).sum(dim=0)
@@ -426,17 +419,17 @@ def execute_memit_defence(
             
             adj_k = adj_k_raw * scale_factor.unsqueeze(0)
         
-        # --- 正交伪装防御逻辑结束 ---
+
 
         resid = targets / (len(hparams.layers) - i)  # Distribute residual across layers
         
-        # 根据 rank 计算 upd_matrix
+
         if target_rank > 1:
             resid = resid @ scale_matrix
             # Rank > 1: upd_matrix = resid @ scale_matrix @ adj_k_raw.T
             upd_matrix = resid @ adj_k_raw.T
         else:
-            # Rank = 1: 保持原逻辑
+
             upd_matrix = resid @ adj_k.T
 
         # Adjust update matrix shape
@@ -469,14 +462,14 @@ def execute_memit_defence(
             del x
         torch.cuda.empty_cache()
 
-    # 修改保存路径
-    # save_dir = Path("./orth_defence_edit_memit_amount") # (硬编码)
+
+    # save_dir = Path("./orth_defence_edit_memit_amount")
     save_dir = Path("./multi_case_edit_memit_defence_amount")
     save_dir.mkdir(exist_ok=True, parents=True)
     case_id = requests[0].get("case_id", "batch_0")
     save_path = save_dir / f"kr_ground_truth_case_{case_id}.pt"
 
-    print(f"\n【新】Saving K/R k_pre_true ground truth to {save_path}...")
+    print(f"\n Saving K/R k_pre_true ground truth to {save_path}...")
     torch.save(kr_data_to_save, save_path)
     print("K/R ground truth save complete.")
 

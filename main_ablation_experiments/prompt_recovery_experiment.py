@@ -1,16 +1,4 @@
-"""
-提示词恢复攻击主实验：基于熵差恢复编辑使用的提示词
 
-实验设置：
-- 数据集：mcf（前2000条数据）
-- 模型：gpt2-xl, gpt-j, Llama3
-- 编辑数量：100个
-- 独立重复实验：5次
-
-指标：
-1. Target恢复成功率：100个知识中恢复target_true的占比
-2. 平均语义相似度：每个主语恢复的提示词和真实提示词的平均相似度，对所有主语求和取平均
-"""
 
 import os
 import sys
@@ -43,7 +31,7 @@ from dsets import AttributeSnippets, get_tfidf_vectorizer
 from experiments.py.eval_utils_counterfact import compute_rewrite_quality_counterfact
 from experiments.py.eval_utils_zsre import compute_rewrite_quality_zsre
 
-# 尝试导入sentence-transformers
+
 try:
     from sentence_transformers import SentenceTransformer
     from sentence_transformers import util as st_util
@@ -95,55 +83,41 @@ DS_EVAL_METHOD_MAP = {
 
 
 def calculate_prediction_entropy_batch(model, tok, prompts, subjects, batch_size=32):
-    """
-    批量计算模型对下一个词预测的熵 (Entropy)
-    
-    Args:
-        model: 模型
-        tok: 分词器
-        prompts: 提示词模板列表（包含{}占位符）
-        subjects: 主语列表
-        batch_size: 批次大小
-    
-    Returns:
-        entropies: 熵值列表，与输入顺序对应
-    """
-    # 构建所有 subject-prompt 组合
+
     full_prompts = [prompt.format(subject) for prompt, subject in zip(prompts, subjects)]
     
     entropies = []
     
-    # 分批处理
+
     for i in range(0, len(full_prompts), batch_size):
         batch_prompts = full_prompts[i:i + batch_size]
         
-        # 批量编码，使用 padding
+
         inputs = tok(
             batch_prompts,
             return_tensors="pt",
             padding=True,
             truncation=True,
-            max_length=512,  # 根据模型调整
+            max_length=512,
         ).to("cuda")
         
         with torch.no_grad():
             outputs = model(**inputs)
         
-        # 获取每个样本最后一个 token 的 logits
+
         # logits shape: [batch_size, seq_len, vocab_size]
         batch_logits = outputs.logits
         
-        # 获取每个样本最后一个非padding token的logits
-        # 使用 attention_mask 找到最后一个有效token
+
         attention_mask = inputs["attention_mask"]
-        seq_lengths = attention_mask.sum(dim=1) - 1  # -1 因为索引从0开始
+        seq_lengths = attention_mask.sum(dim=1) - 1
         
         batch_entropies = []
         for j in range(batch_logits.size(0)):
             last_token_idx = seq_lengths[j].item()
             logits = batch_logits[j, last_token_idx, :]
             
-            # 计算熵: -sum(p * log(p))
+
             log_probs = torch.log_softmax(logits, dim=-1)
             probs = torch.softmax(logits, dim=-1)
             entropy = -(probs * log_probs).sum().item()
@@ -155,7 +129,7 @@ def calculate_prediction_entropy_batch(model, tok, prompts, subjects, batch_size
 
 
 def load_sentence_model():
-    """全局加载SentenceBERT模型，避免重复加载"""
+
     sentence_model = None
     if SENTENCE_TRANSFORMERS_AVAILABLE:
         try:
@@ -170,10 +144,7 @@ def load_sentence_model():
 
 
 def get_project(model, tok, layer, hparams):
-    """
-    计算投影矩阵P（用于AlphaEdit）
-    参考evaluate.py和main_attack_experiment.py中的实现
-    """
+
     force_recompute = False
     cov = alphaedit_get_cov(
         model,
@@ -194,16 +165,8 @@ def get_project(model, tok, layer, hparams):
 
 
 def calculate_rank_distribution(ranks):
-    """
-    计算排名分布统计
-    
-    Args:
-        ranks: 排名列表
-    
-    Returns:
-        dict: 包含不同区间范围的统计
-    """
-    # 定义区间范围
+
+
     intervals = [
         (1, 5),
         (5, 20),
@@ -222,12 +185,11 @@ def calculate_rank_distribution(ranks):
     
     distribution = {}
     for start, end in intervals:
-        # 统计在 [start, end) 区间内的排名数量
-        # 注意：区间是左闭右开的 [start, end)
+
         count = sum(1 for rank in ranks if start <= rank < end)
         distribution[f"{start}-{end}"] = count
     
-    # 统计 > 1000 的排名数量
+
     count_over_1000 = sum(1 for rank in ranks if rank >= 1000)
     distribution["1000+"] = count_over_1000
     
@@ -442,7 +404,7 @@ def run_single_experiment(
     print("\n[Step 4] Calculating unedited entropies (batch processing)...")
     unedited_entropies = {}  # {(subject, prompt): entropy}
     
-    # 构建所有 subject-prompt 组合
+
     all_combinations = []
     for subject in true_subjects:
         for prompt in prompt_library:
@@ -450,7 +412,7 @@ def run_single_experiment(
     
     print(f"Total combinations: {len(all_combinations)}")
     
-    # 批量计算熵
+
     batch_size = 256
     subjects_batch = [combo[0] for combo in all_combinations]
     prompts_batch = [combo[1] for combo in all_combinations]
@@ -460,7 +422,7 @@ def run_single_experiment(
             model, tok, prompts_batch, subjects_batch, batch_size=batch_size
         )
         
-        # 将结果存储到字典
+
         for (subject, prompt), entropy in zip(all_combinations, entropies_batch):
             unedited_entropies[(subject, prompt)] = entropy
         
@@ -624,13 +586,13 @@ def run_single_experiment(
     # 7. Calculate edited entropies and recover prompts (batch processing)
     print("\n[Step 6] Calculating edited entropies and recovering prompts (batch processing)...")
     
-    # 批量计算编辑后的熵
+
     try:
         edited_entropies_batch = calculate_prediction_entropy_batch(
             edited_model, tok, prompts_batch, subjects_batch, batch_size=batch_size
         )
         
-        # 将结果存储到字典
+
         edited_entropies = {}
         for (subject, prompt), entropy in zip(all_combinations, edited_entropies_batch):
             edited_entropies[(subject, prompt)] = entropy
@@ -644,19 +606,19 @@ def run_single_experiment(
         torch.cuda.empty_cache()
         return None
     
-    # 8. 处理结果：为每个subject计算真实提示词排名和相似度
+
     print("\n[Step 8] Processing results and calculating metrics...")
     
     results = {}
-    true_prompt_ranks = []  # 记录每个subject的真实提示词排名
-    top5_avg_similarities = []  # 记录每个subject的前5个提示词与真实提示词的平均相似度
+    true_prompt_ranks = []
+    top5_avg_similarities = []
     
     for idx, (subject, true_prompt, target_true, record) in enumerate(zip(true_subjects, true_prompts, target_trues, sampled_records)):
         if (idx + 1) % 10 == 0:
             print(f"Processing subject {idx + 1}/{num_edits}: {subject}")
         
         case_id = record["case_id"]
-        # 检查编辑是否成功（基于评估结果）
+
         edit_success = edit_success_map.get(case_id, False)
         
         if not edit_success:
@@ -672,7 +634,7 @@ def run_single_experiment(
         
         prompt_scores = []
         
-        # 收集该subject的所有prompt得分
+
         for prompt in prompt_library:
             e_unedit = unedited_entropies.get((subject, prompt), None)
             e_edit = edited_entropies.get((subject, prompt), None)
@@ -693,7 +655,7 @@ def run_single_experiment(
         # Sort by score (descending)
         prompt_scores.sort(key=lambda x: x["score"], reverse=True)
         
-        # 打印前10个提示词的得分
+
         print(f"\n[Subject: {subject}] Top 10 prompts by score:")
         print(f"{'Rank':<6} {'Score':<15} {'E_unedit':<12} {'E_edit':<12} {'Prompt':<60}")
         print("-" * 110)
@@ -701,7 +663,7 @@ def run_single_experiment(
             is_true = "✓" if item['prompt'] == true_prompt else " "
             print(f"{rank:<6} {item['score']:<15.6f} {item['e_unedit']:<12.6f} {item['e_edit']:<12.6f} {item['prompt']:<60} {is_true}")
         
-        # 查找真实提示词的排名和得分
+
         true_prompt_rank = None
         true_prompt_score = None
         for rank, item in enumerate(prompt_scores, 1):
@@ -710,7 +672,7 @@ def run_single_experiment(
                 true_prompt_score = item['score']
                 break
         
-        # 如果真实提示词不在候选列表中，排名设为候选列表长度+1
+
         if true_prompt_rank is None:
             true_prompt_rank = len(prompt_scores) + 1
         
@@ -726,10 +688,10 @@ def run_single_experiment(
             print(f"\n[Subject: {subject}] True prompt NOT found in prompt_scores!")
             print(f"  True prompt: '{true_prompt}'")
         
-        # 获取前5个提示词，计算与真实提示词的相似度
+
         top5_prompts = [item["prompt"] for item in prompt_scores[:5]]
         
-        # 计算前5个提示词与真实提示词的平均相似度
+
         avg_similarity = 0.0
         if sentence_model and len(top5_prompts) > 0:
             print(f"\n[Subject: {subject}] Calculating similarity for top 5 prompts...")
@@ -759,7 +721,7 @@ def run_single_experiment(
             if len(top5_prompts) == 0:
                 print(f"  [IF NOT ENTERED] top5_prompts is empty")
         
-        # 只将有效的编辑计入统计（编辑成功的才计入）
+
         true_prompt_ranks.append(true_prompt_rank)
         top5_avg_similarities.append(avg_similarity)
         
@@ -771,26 +733,25 @@ def run_single_experiment(
             "case_id": case_id,
         }
     
-    # 清理编辑后的模型
+
     del edited_model
     torch.cuda.empty_cache()
     
-    # 计算总体指标
-    # 计算排名前 20 的主语百分比
+
     top20_count = sum(1 for rank in true_prompt_ranks if rank <= 20)
     top20_percentage = (top20_count / len(true_prompt_ranks) * 100.0) if true_prompt_ranks else 0.0
     
     overall_avg_similarity = sum(top5_avg_similarities) / len(top5_avg_similarities) if top5_avg_similarities else 0.0
     
-    # 计算排名分布统计
+
     rank_distribution = calculate_rank_distribution(true_prompt_ranks)
     
     results["_summary"] = {
-        "top20_percentage": top20_percentage,  # 排名前 20 的主语百分比
+        "top20_percentage": top20_percentage,
         "avg_top5_similarity": overall_avg_similarity,
         "rank_distribution": rank_distribution,
-        "all_ranks": true_prompt_ranks,  # 保存所有排名用于后续统计
-        "all_similarities": top5_avg_similarities,  # 保存所有相似度用于后续统计
+        "all_ranks": true_prompt_ranks,
+        "all_similarities": top5_avg_similarities,
     }
     
     print(f"\nExperiment #{run_id} completed!")
@@ -800,12 +761,12 @@ def run_single_experiment(
 
 
 def run_prompt_recovery_experiments():
-    """运行提示词恢复实验"""
+
     print("\n" + "=" * 80)
     print("Prompt Recovery Attack Experiments")
     print("=" * 80)
     
-    # 全局加载SentenceBERT模型（只加载一次）
+
     print("\n" + "=" * 80)
     print("Loading SentenceBERT model (global, loaded once for all experiments)...")
     print("=" * 80)
@@ -819,9 +780,9 @@ def run_prompt_recovery_experiments():
     datasets = ["mcf", "zsre"]
     algorithms = ["MEMIT", "AlphaEdit", "ROME"]
     # algorithms = ["ROME"]
-    num_edits_list = [1]
+    num_edits_list = [10, 50, 100]
     
-    # 统一为 5 次独立实验
+
     def get_n_runs(num_edits):
         return 5
     
@@ -832,7 +793,7 @@ def run_prompt_recovery_experiments():
     # {(model, alg, ds, num_edits, run_id): results_dict}
     all_results = {}
     
-    # 计算总实验数
+
     total_experiments = 0
     for num_edits in num_edits_list:
         n_runs = get_n_runs(num_edits)
@@ -902,24 +863,24 @@ def run_prompt_recovery_experiments():
 
 
 def get_n_runs_for_edits(num_edits):
-    """统一返回 5 次独立实验"""
+
     return 5
 
 
 def generate_result_tables(all_results, models, algorithms, datasets, num_edits_list, results_dir):
-    """生成结果表格"""
+
     
     # Table 1: Top-20 Percentage
-    # 基于 5 次独立实验的平均百分比和标准差（实验均值的方差）
+
     table1_data = []
     for model in models:
         for alg in algorithms:
             for ds in datasets:
                 for num_edits in num_edits_list:
-                    # 统一为 5 次独立实验
+
                     n_runs = get_n_runs_for_edits(num_edits)
                     
-                    # 收集每次实验的 top20_percentage
+
                     run_percentages = []
                     
                     for run_id in range(n_runs):
@@ -929,12 +890,12 @@ def generate_result_tables(all_results, models, algorithms, datasets, num_edits_
                         
                         results = all_results[key]
                         
-                        # 从summary中获取该次实验的 top20_percentage
+
                         if "_summary" in results and "top20_percentage" in results["_summary"]:
                             percentage = results["_summary"]["top20_percentage"]
                             run_percentages.append(percentage)
                     
-                    # 计算 5 次独立实验的平均百分比和标准差（基于实验均值）
+
                     if run_percentages:
                         mean_percentage = np.mean(run_percentages)
                         std_percentage = np.std(run_percentages, ddof=1) if len(run_percentages) > 1 else 0.0
@@ -954,16 +915,16 @@ def generate_result_tables(all_results, models, algorithms, datasets, num_edits_
     df_table1 = pd.DataFrame(table1_data)
     
     # Table 2: Average Top-5 Similarity
-    # 基于 5 次独立实验的平均相似度和标准差（实验均值的方差）
+
     table2_data = []
     for model in models:
         for alg in algorithms:
             for ds in datasets:
                 for num_edits in num_edits_list:
-                    # 统一为 5 次独立实验
+
                     n_runs = get_n_runs_for_edits(num_edits)
                     
-                    # 收集每次实验的平均相似度
+
                     run_avg_similarities = []
                     
                     for run_id in range(n_runs):
@@ -973,12 +934,12 @@ def generate_result_tables(all_results, models, algorithms, datasets, num_edits_
                         
                         results = all_results[key]
                         
-                        # 从summary中获取该次实验的平均相似度
+
                         if "_summary" in results and "avg_top5_similarity" in results["_summary"]:
                             avg_sim = results["_summary"]["avg_top5_similarity"]
                             run_avg_similarities.append(avg_sim)
                     
-                    # 计算 5 次独立实验的平均相似度和标准差（基于实验均值）
+
                     if run_avg_similarities:
                         mean_sim = np.mean(run_avg_similarities)
                         std_sim = np.std(run_avg_similarities, ddof=1) if len(run_avg_similarities) > 1 else 0.0
@@ -997,9 +958,7 @@ def generate_result_tables(all_results, models, algorithms, datasets, num_edits_
     
     df_table2 = pd.DataFrame(table2_data)
     
-    # Table 3: Rank Distribution Histogram
-    # 对于每个模型，根据编辑数量统计不同次数的独立实验中真实提示词排名在不同区间的分布
-    # 计算每个区间的平均值
+
     table3_data = []
     intervals = [
         "1-5", "5-20", "20-50", "50-100", "100-200", "200-300", 
@@ -1011,10 +970,10 @@ def generate_result_tables(all_results, models, algorithms, datasets, num_edits_
         for alg in algorithms:
             for ds in datasets:
                 for num_edits in num_edits_list:
-                    # 根据编辑数量确定实验次数
+
                     n_runs = get_n_runs_for_edits(num_edits)
                     
-                    # 收集所有实验的排名分布
+
                     all_distributions = []
                     
                     for run_id in range(n_runs):
@@ -1024,12 +983,12 @@ def generate_result_tables(all_results, models, algorithms, datasets, num_edits_
                         
                         results = all_results[key]
                         
-                        # 从summary中获取排名分布
+
                         if "_summary" in results and "rank_distribution" in results["_summary"]:
                             distribution = results["_summary"]["rank_distribution"]
                             all_distributions.append(distribution)
                     
-                    # 计算每个区间的平均值
+
                     row_data = {
                         "Model": model,
                         "Algorithm": alg,
@@ -1039,7 +998,7 @@ def generate_result_tables(all_results, models, algorithms, datasets, num_edits_
                     }
                     for interval in intervals:
                         if all_distributions:
-                            # 获取该区间在所有实验中的计数
+
                             counts = [dist.get(interval, 0) for dist in all_distributions]
                             mean_count = np.mean(counts)
                             std_count = np.std(counts, ddof=1) if len(counts) > 1 else 0.0

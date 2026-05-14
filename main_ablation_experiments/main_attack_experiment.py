@@ -1,14 +1,4 @@
-"""
-主攻击实验：测试不同编辑算法和攻击算法的效果
 
-实验设置：
-- 多编辑实验：3个模型 × 3个num_edit设置 × 2个算法(MEMIT, AlphaEdit) × 2个数据集
-- 单编辑实验：3个模型 × 2个数据集 (ROME)
-
-指标：
-1. Top-N Recall Rate: 前num_edit个投影系数得分中真实主语的比例
-2. Average Projection Score: num_edit个真实主语的投影系数平均数
-"""
 
 import os
 import sys
@@ -96,7 +86,7 @@ ATTACK_CONFIG_MAP = {
 
 
 def get_attack_config(model_name, alg_name):
-    """获取攻击配置（层数和模块模板）"""
+
     key = (model_name, alg_name)
     if key not in ATTACK_CONFIG_MAP:
         raise ValueError(f"No attack config found for model={model_name}, algorithm={alg_name}")
@@ -104,38 +94,18 @@ def get_attack_config(model_name, alg_name):
 
 
 def needs_transpose_for_svd(model_name):
-    """
-    判断模型在SVD之前是否需要转置矩阵
-    
-    Args:
-        model_name: 模型名称（如 "gpt2-xl", "gpt-j", "Llama3"）
-    
-    Returns:
-        bool: 如果需要转置返回True
-    """
+
     return model_name == "gpt2-xl"
 
 
 def create_name_database(ds_name="mcf", limit=2000):
-    """
-    创建包含候选主语的数据库
-    
-    Args:
-        ds_name: 数据集名称，'mcf' 或 'zsre'
-        limit: 限制加载的数据条数
-    
-    Returns:
-        subjects: 主语列表
-    """
+
     subjects, _ = load_dataset_data(ds_name=ds_name, limit=limit)
     return subjects
 
 
 def get_project(model, tok, layer, hparams):
-    """
-    计算投影矩阵P（用于AlphaEdit）
-    参考evaluate.py中的实现
-    """
+
     force_recompute = False
     cov = alphaedit_get_cov(
         model,
@@ -156,7 +126,7 @@ def get_project(model, tok, layer, hparams):
 
 
 def get_activation_vector_for_name(model, tok, name, template, layer, module_template):
-    """获取指定名字在目标层的激活向量"""
+
     context_templates = [template]
     words = [name]
     
@@ -177,16 +147,7 @@ def get_activation_vector_for_name(model, tok, name, template, layer, module_tem
 
 
 def perform_attack_memit(model, tok, case_id, num_edits, layer, module_template, true_subjects, knowledge_template, ds_name="mcf", model_name=None):
-    """
-    对MEMIT编辑进行攻击
-    
-    Args:
-        ds_name: 数据集名称，用于构建候选主语数据库
-        model_name: 模型名称，用于判断是否需要转置
-    
-    Returns:
-        scores: 排序后的分数列表，每个元素包含 {"name": str, "score": float}
-    """
+
     # delta_path = f"./multi_case_edit_memit_amount/edit_amounts_batch_case_{case_id}.pt"
 
     delta_path = f"./multi_case_edit_memit_amount_attack/edit_amounts_batch_case_{case_id}.pt"
@@ -260,16 +221,7 @@ def perform_attack_memit(model, tok, case_id, num_edits, layer, module_template,
 
 
 def perform_attack_alphaedit(model, tok, case_id, num_edits, layer, module_template, true_subjects, knowledge_template, ds_name="mcf", model_name=None):
-    """
-    对AlphaEdit编辑进行攻击
-    
-    Args:
-        ds_name: 数据集名称，用于构建候选主语数据库
-        model_name: 模型名称，用于判断是否需要转置
-    
-    Returns:
-        scores: 排序后的分数列表
-    """
+
     edit_amounts_path = f"./alphaedit_edit_amounts/edit_amounts_batch_case_{case_id}.pt"
     
     if not Path(edit_amounts_path).exists():
@@ -296,7 +248,7 @@ def perform_attack_alphaedit(model, tok, case_id, num_edits, layer, module_templ
         delta = layer_data.cuda().double()
         P = None
     
-    # Determine model name if not provided
+
     if model_name is None:
         model_full_name = model.config._name_or_path
         if "gpt2-xl" in model_full_name or model_full_name == "gpt2-xl":
@@ -319,7 +271,7 @@ def perform_attack_alphaedit(model, tok, case_id, num_edits, layer, module_templ
     else:
         P = P.cuda().double()
     
-    # SVD to get Q basis
+
     try:
         U, S, Vh = torch.linalg.svd(delta, full_matrices=False)
         actual_rank = min(num_edits, Vh.shape[0])
@@ -356,16 +308,7 @@ def perform_attack_alphaedit(model, tok, case_id, num_edits, layer, module_templ
 
 
 def perform_attack_rome(model, tok, case_id, layer, module_template, true_subjects, knowledge_template, ds_name="mcf", model_name=None):
-    """
-    对ROME编辑进行攻击（单编辑）
-    
-    Args:
-        ds_name: 数据集名称，用于构建候选主语数据库
-        model_name: 模型名称，用于判断是否需要转置
-    
-    Returns:
-        scores: 排序后的分数列表
-    """
+
     edit_amounts_path = f"./rome_edit_amounts/edit_amounts_case_{case_id}.pt"
     
     if not Path(edit_amounts_path).exists():
@@ -387,7 +330,7 @@ def perform_attack_rome(model, tok, case_id, layer, module_template, true_subjec
     layer_data = edit_amounts[weight_key]
     upd_matrix = layer_data["upd_matrix"].cuda().double()
     
-    # Determine model name if not provided
+
     if model_name is None:
         model_full_name = model.config._name_or_path
         if "gpt2-xl" in model_full_name or model_full_name == "gpt2-xl":
@@ -463,13 +406,7 @@ def perform_attack_rome(model, tok, case_id, layer, module_template, true_subjec
 
 
 def compute_metrics(scores, true_subjects, num_edits):
-    """
-    计算指标
-    
-    Returns:
-        recall_rate: 前num_edit个投影系数得分中真实主语的比例
-        avg_proj_score: num_edit个真实主语的投影系数平均数
-    """
+
     if not scores:
         return 0.0, 0.0
     
@@ -495,13 +432,7 @@ def run_single_experiment(
     run_id,
     results_dir
 ):
-    """
-    运行单个独立实验
-    
-    Returns:
-        recall_rate: Top-N召回率
-        avg_proj_score: 平均投影分数
-    """
+
     print("\n" + "=" * 80)
     print(f"Experiment Run #{run_id}")
     print(f"Algorithm: {alg_name}, Model: {model_name}, Dataset: {ds_name}, Num Edits: {num_edits}")
@@ -629,7 +560,11 @@ def run_single_experiment(
     
     # Use unified knowledge template
     knowledge_template = "The mother tongue of {} is"
-    
+    # knowledge_template = "The US dollar {} earns each year is"
+    # knowledge_template = "The detailed address of {} is"
+    # knowledge_template = "We know that {} is"
+    # knowledge_template = "{}, who is"
+
     # 6. Execute attack
     # Note: We use edited_model instead of original_model because we're getting
     # activations at layer L, and layers 0 to L-1 are not modified
@@ -678,15 +613,16 @@ def run_single_experiment(
 
 
 def run_multi_edit_experiments():
-    """运行多编辑实验"""
+
     print("\n" + "=" * 80)
     print("Multi-Edit Attack Experiments")
     print("=" * 80)
     
     # Experiment configuration
     # models = ["gpt2-xl", "gpt-j", "Llama3"]
-    models = ["Qwen2.5", "gpt-j", "Llama3"]
-    num_edit_settings = [10, 50, 100]
+    models = ["Llama3", "gpt-j", "Qwen2.5"]
+    # num_edit_settings = [10, 50, 100]
+    num_edit_settings = [100]
     algorithms = ["MEMIT","AlphaEdit"]
     # algorithms = ["AlphaEdit"]
     datasets = ["mcf", "zsre"]
@@ -764,7 +700,7 @@ def run_multi_edit_experiments():
 
 
 def run_single_edit_experiments():
-    """运行单编辑实验（ROME）"""
+
     print("\n" + "=" * 80)
     print("Single-Edit Attack Experiments (ROME)")
     print("=" * 80)
@@ -847,7 +783,7 @@ def run_single_edit_experiments():
 
 
 def generate_multi_edit_tables(all_results, models, algorithms, datasets, num_edit_settings, results_dir):
-    """生成多编辑实验表"""
+
     # Table 1: Top-N Recall Rate
     recall_data = []
     for model in models:
@@ -919,7 +855,7 @@ def generate_multi_edit_tables(all_results, models, algorithms, datasets, num_ed
 
 
 def generate_single_edit_tables(all_results, models, datasets, results_dir):
-    """生成单编辑实验表"""
+
     # Table 1: Top-1 Recall Rate
     recall_data = []
     for model in models:

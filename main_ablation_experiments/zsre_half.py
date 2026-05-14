@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.lines import Line2D
 
-# --- 1. 全局字体与画图设置 ---
+
 plt.rcParams['font.family'] = 'serif'
 plt.rcParams['font.serif'] = ['Times New Roman', 'Times', 'DejaVu Serif']
 plt.rcParams['axes.linewidth'] = 0.8
@@ -15,7 +15,7 @@ plt.rcParams['ytick.labelsize'] = 7
 plt.rcParams['legend.fontsize'] = 8
 plt.rcParams['figure.dpi'] = 300
 
-# --- 2. 数据录入 (Data) ---
+
 data = {
     'SST': {
         'AlphaEdit': {'no_defense_f1': 0.8311, 'f1_mean': [0.8268, 0.8103, 0.6234, 0.0724, 0.0020],
@@ -48,8 +48,7 @@ data = {
 
 datasets = ['SST', 'MMLU', 'MRPC']
 
-# --- 3. 绘图主逻辑 ---
-# 仅显示第一行，保持子图大小：宽度6.5不变，高度减半并微调
+
 fig, axes = plt.subplots(1, 3, figsize=(6.5, 2.0))
 axes = axes.flatten()
 
@@ -68,7 +67,7 @@ for i, ds_name in enumerate(datasets):
         y = np.array(m_data['f1_mean'])
         y_err = np.array(m_data['f1_std'])
 
-        nd_rank = 1.00
+        nd_rank = 50.1
         nd_f1 = m_data['no_defense_f1']
         c = styles[method]['color']
 
@@ -79,10 +78,10 @@ for i, ds_name in enumerate(datasets):
 
     ax.set_title(ds_name, fontsize=9, pad=5, fontweight='bold')
 
-    # 每一列都显示 X 轴标签
+
     ax.set_xlabel('True Subjects Rank', fontsize=8)
 
-    # 第一列显示 Y 轴标签
+
     if i == 0:
         ax.set_ylabel('F1 Score', fontsize=8)
 
@@ -90,7 +89,7 @@ for i, ds_name in enumerate(datasets):
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
 
-# --- 4. 统一图例 ---
+
 red_c = styles['AlphaEdit']['color']
 blue_c = styles['MEMIT']['color']
 
@@ -103,7 +102,7 @@ custom_handles = [
            linestyle='None', label='MEMIT (No Defense)', alpha=0.7),
 ]
 
-# 调整子图间距，top留出位置给图例
+
 plt.subplots_adjust(top=0.72, bottom=0.22, wspace=0.3)
 
 fig.legend(handles=custom_handles, loc='upper center', bbox_to_anchor=(0.5, 0.98),

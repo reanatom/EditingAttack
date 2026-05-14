@@ -13,13 +13,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 
 def create_subjects_and_templates():
-    """
-    10 subjects + 10 prompt templates.
 
-    We will compute a 10x10 prompt-activation cosine-similarity matrix for EACH subject,
-    then average these matrices across subjects. This makes the final npy less sensitive
-    to any single name.
-    """
     subjects = [
         # Keep the originally requested name
         "Danielle Darrieux",
