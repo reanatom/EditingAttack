@@ -1,5 +1,8 @@
-# [[ICML'26 regular] Reverse-Engineering Model Editing on Language Models](https://arxiv.org/abs/2602.10134) 
+# [ICML'26 regular] Reverse-Engineering Model Editing on Language Models
 
+
+> Reverse-Engineering Model Editing on Language Models,\
+>Zhiyu Sun, Minrui Luo, Yu Wang, Zhili Chen, Tianxing He. *ICML, 2026*, [Link](https://arxiv.org/abs/2602.10134)
 <p align="center">
   <img src="/resource/KSTER.png" width="90%">
 </p>
