@@ -67,7 +67,7 @@ for i, ds_name in enumerate(datasets):
         y = np.array(m_data['f1_mean'])
         y_err = np.array(m_data['f1_std'])
 
-        nd_rank = 50.1
+        nd_rank = 50.8
         nd_f1 = m_data['no_defense_f1']
         c = styles[method]['color']
 
